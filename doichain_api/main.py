@@ -433,7 +433,7 @@ async def poe_status(hash_hex: str) -> dict:
             }
         )
     if pending:
-        result["pending_ops"] = [{"txid": p.get("txid"), "op": p.get("op"), "address": p.get("address"), "explorer_tx": explorer_link("tx", p.get("txid", ""))} for p in pending]
+        result["pending_ops"] = [{"txid": p.get("txid"), "op": p.get("op"), "address": p.get("address"), "value": p.get("value"), "explorer_tx": explorer_link("tx", p.get("txid", ""))} for p in pending]
     return result
 
 
@@ -929,7 +929,27 @@ async def send_to_name(body: SendToName):
 # ---------------------------------------------------------------------------
 
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unbekannt"
+    """Client-Adresse fuer das Kontingent. IPv6 wird auf das /64-Praefix zusammengefasst, weil ein Anschluss
+    dort beliebig viele Einzeladressen hat."""
+    host = request.client.host if request.client else "unbekannt"
+    try:
+        import ipaddress
+        addr = ipaddress.ip_address(host)
+        if addr.version == 6:
+            return str(ipaddress.ip_network(f"{host}/64", strict=False).network_address) + "/64"
+    except ValueError:
+        pass
+    return host
+
+
+async def public_poe_guard() -> None:
+    """Oeffentliche Nachweise nur, solange das Wallet eine Reserve behaelt."""
+    try:
+        balances = await rpc.call("getbalances", wallet=True)
+        if float(balances["mine"]["trusted"]) < 5.0:
+            raise HTTPException(503, "Die oeffentliche Nachweis-App ist vorerst pausiert, das Betriebsguthaben ist aufgebraucht. Mit eigenem write-Schluessel weiterhin moeglich")
+    except RPCError:
+        pass
 
 
 @app.get("/v1/poe/quota", tags=["Proof of Existence"], summary="Verbleibendes Tageskontingent der oeffentlichen PoE-App (poe-Schluessel)", description="Mit write- oder admin-Schluessel gibt es kein Kontingent, dann steht unlimited:true.")
@@ -983,9 +1003,18 @@ async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, 
         raise HTTPException(409, "Fuer diesen Hash wartet bereits eine unbestaetigte Namensoperation im Mempool")
     name = poe_name(hash_hex)
     value = build_poe_value(hash_hex, filename, note)
-    remaining = quota.register(ip) if public else None
-    txid = await rpc.call("name_doi", name, value, name_options(), wallet=True)
-    result = await ensure_accepted(txid)
+    remaining = None
+    if public:
+        await public_poe_guard()
+        remaining = quota.register(ip)
+    try:
+        txid = await rpc.call("name_doi", name, value, name_options(), wallet=True)
+        result = await ensure_accepted(txid)
+    except Exception:
+        if public:
+            quota.release(ip)
+            remaining = quota.usage(ip)
+        raise
     result.update(
         {
             "hash": hash_hex,

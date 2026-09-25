@@ -67,11 +67,12 @@
           </button>
         </div>
 
-        <div class="status" id="statusBox"></div>
+        <div class="status" id="statusBox" aria-live="polite"></div>
 
         <div class="actions" id="createBox" hidden>
           <label class="note-label" for="note"><span data-i18n="create.note">Notiz (optional, öffentlich sichtbar, höchstens 160 Zeichen)</span></label>
           <input type="text" id="note" maxlength="160" placeholder="z. B. Vertrag Version 3">
+          <label class="check"><input type="checkbox" id="sendName"> <span data-i18n="create.sendname">Dateinamen öffentlich mit verankern</span></label>
           <button class="btn primary" id="createBtn" type="button" data-i18n="create.btn">Jetzt in der Doichain verankern</button>
           <p class="quota" id="quota"></p>
         </div>
@@ -81,7 +82,7 @@
           <button class="btn" id="printBtn" type="button" data-i18n="btn.print">Nachweis drucken</button>
           <a class="btn ghost" id="explorerLink" target="_blank" rel="noopener" data-i18n="btn.explorer">Im Explorer ansehen</a>
         </div>
-        <p class="error" id="error" hidden></p>
+        <p class="error" id="error" role="alert" hidden></p>
       </div>
     </section>
 
@@ -98,14 +99,14 @@
       <h2 data-i18n="verify.title">Nachweis prüfen</h2>
       <p data-i18n="verify.lead">Datei oben ablegen, oder einen bekannten Hash direkt eingeben.</p>
       <form class="verify-form" id="verifyForm">
-        <input type="text" id="hashInput" placeholder="SHA-256, 64 Hex-Zeichen" spellcheck="false" autocomplete="off">
+        <input type="text" id="hashInput" placeholder="SHA-256, 64 Hex-Zeichen" aria-label="SHA-256" spellcheck="false" autocomplete="off">
         <button class="btn primary" type="submit" data-i18n="verify.btn">Prüfen</button>
       </form>
     </section>
 
     <section class="section" id="faq">
       <h2>FAQ</h2>
-      <details><summary data-i18n="faq.q1">Wird meine Datei hochgeladen?</summary><p data-i18n="faq.a1">Nein. Der Hash wird mit der Web-Crypto-Funktion Ihres Browsers berechnet. Nur die 64 Zeichen des Hashes werden an den Doichain-Server übertragen. Aus dem Hash lässt sich die Datei nicht rekonstruieren.</p></details>
+      <details><summary data-i18n="faq.q1">Wird meine Datei hochgeladen?</summary><p data-i18n="faq.a1">Nein. Der Hash wird im Browser berechnet, die Bibliothek dafür liefert Verifile selbst aus. An den Doichain-Server gehen nur die 64 Zeichen des Hashes, dazu Ihre Notiz und, nur wenn Sie das Häkchen setzen, der Dateiname. Alles drei ist danach öffentlich in der Doichain lesbar, aus dem Hash lässt sich die Datei nicht rekonstruieren.</p></details>
         <details><summary data-i18n="faq.q2">Was kostet das?</summary><p data-i18n="faq.a2">Für Sie nichts. Die Doichain-Gebühr und das Namenspfand trägt DOI Labs. Damit das so bleibt, gibt es ein Tageskontingent je Nutzer.</p></details>
         <details><summary data-i18n="faq.q3">Wann ist der Nachweis gültig?</summary><p data-i18n="faq.a3">Nach der ersten Bestätigung, im Mittel etwa zehn Minuten nach dem Verankern. Die Seite zeigt den Stand automatisch an. Der Eintrag bleibt 36.000 Blöcke (rund 250 Tage) aktiv und danach dauerhaft in der Kettenhistorie sichtbar. Ein erneutes Verankern verlängert ihn.</p></details>
         <details><summary data-i18n="faq.q4">Wie beweise ich das später einem Dritten?</summary><p data-i18n="faq.a4">Übergeben Sie die Datei und den heruntergeladenen Nachweis (JSON). Der Dritte berechnet den Hash der Datei, vergleicht ihn mit dem Nachweis und schaut den Eintrag im Doichain-Explorer nach. Beides geht ohne Verifile.</p></details>
@@ -137,8 +138,8 @@
     </div>
   </template>
 
-  <script src="https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/index.umd.min.js" crossorigin="anonymous"></script>
-  <script src="config.js"></script>
+  <script src="vendor/hash-wasm.umd.min.js"></script>
+  <script src="config.js?v=2"></script>
   <script src="app.js"></script>
 </body>
 </html>

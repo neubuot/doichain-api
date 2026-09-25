@@ -14,7 +14,10 @@
       "hero.lead": "Ihr Dokument bleibt auf Ihrem Rechner. Der Browser berechnet einen Fingerabdruck (SHA-256), Verifile verankert ihn in der Doichain. Ab dann kann jeder prüfen, dass genau diese Datei zu diesem Zeitpunkt existierte.",
       "drop.title": "Datei hierher ziehen oder klicken", "drop.sub": "Jede Dateiart, jede Größe. Es wird nichts hochgeladen.",
       "btn.copy": "Kopieren", "btn.download": "Nachweis herunterladen (JSON)", "btn.print": "Nachweis drucken", "btn.explorer": "Im Explorer ansehen",
-      "create.note": "Notiz (optional, öffentlich sichtbar, höchstens 160 Zeichen)", "create.btn": "Jetzt in der Doichain verankern",
+      "create.note": "Notiz (optional, öffentlich sichtbar, höchstens 160 Zeichen)", "create.btn": "Jetzt in der Doichain verankern", "create.sendname": "Dateinamen öffentlich mit verankern",
+      "faq.a1": "Nein. Der Hash wird im Browser berechnet, die Bibliothek dafür liefert Verifile selbst aus. An den Doichain-Server gehen nur die 64 Zeichen des Hashes, dazu Ihre Notiz und, nur wenn Sie das Häkchen setzen, der Dateiname. Alles drei ist danach öffentlich in der Doichain lesbar, aus dem Hash lässt sich die Datei nicht rekonstruieren.",
+      "err.empty": "Die Datei ist leer, dafür gibt es keinen sinnvollen Nachweis.", "err.polling": "Die Bestätigung dauert ungewöhnlich lange. Seite später neu laden oder den Hash unten erneut prüfen.",
+      "err.quota": "Tageskontingent erschöpft. Morgen wieder, oder mit eigenem API-Schlüssel über die Doichain API.",
       "how.title": "So funktioniert es",
       "how.s1t": "Fingerabdruck im Browser", "how.s1": "Aus Ihrer Datei berechnet der Browser einen SHA-256-Hash, 64 Zeichen, die nur zu genau dieser Datei passen. Ein einziges geändertes Bit ergibt einen anderen Hash.",
       "how.s2t": "Verankerung in der Doichain", "how.s2": "Der Hash wird als Name in der Doichain registriert. Der Block, der ihn enthält, trägt einen Zeitstempel, den niemand nachträglich ändern kann.",
@@ -36,6 +39,7 @@
       "quota.left": "Heute noch {ip} Nachweise für Sie möglich ({total} insgesamt).", "quota.unlimited": "",
       "err.hash": "Bitte einen gültigen SHA-256-Hash eingeben (64 Hex-Zeichen).", "err.net": "Der Doichain-Server ist gerade nicht erreichbar. Bitte später erneut versuchen.",
       "err.generic": "Das hat nicht geklappt: {msg}", "err.big": "Die Datei ist sehr groß, die Berechnung kann eine Weile dauern.",
+      "err.toobig": "Ohne WebAssembly kann dieser Browser nur Dateien bis 1 GB verarbeiten. Bitte einen aktuellen Browser verwenden oder den Hash lokal berechnen und unten eingeben.",
       "btn.renew": "Erneut verankern (verlängern)", "copied": "Kopiert",
       "print.status.confirmed": "Bestätigt / confirmed", "print.status.pending": "Ausstehend / pending", "print.status.expired": "Abgelaufen / expired",
     },
@@ -46,7 +50,10 @@
       "hero.lead": "Your document stays on your device. The browser computes a fingerprint (SHA-256) and Verifile anchors it in the Doichain. From then on anyone can verify that exactly this file existed at that moment.",
       "drop.title": "Drop a file here or click", "drop.sub": "Any file type, any size. Nothing is uploaded.",
       "btn.copy": "Copy", "btn.download": "Download proof (JSON)", "btn.print": "Print proof", "btn.explorer": "Open in explorer",
-      "create.note": "Note (optional, publicly visible, up to 160 characters)", "create.btn": "Anchor it in the Doichain now",
+      "create.note": "Note (optional, publicly visible, up to 160 characters)", "create.btn": "Anchor it in the Doichain now", "create.sendname": "Also anchor the file name publicly",
+      "faq.a1": "No. The hash is computed in your browser, Verifile ships the library itself. Only the 64 characters of the hash go to the Doichain server, plus your note and, only if you tick the box, the file name. All three become publicly readable in the Doichain, the file cannot be reconstructed from the hash.",
+      "err.empty": "The file is empty, there is nothing meaningful to prove.", "err.polling": "Confirmation is taking unusually long. Reload the page later or verify the hash below again.",
+      "err.quota": "Daily allowance exhausted. Try again tomorrow, or use your own API key with the Doichain API.",
       "how.title": "How it works",
       "how.s1t": "Fingerprint in your browser", "how.s1": "Your browser computes a SHA-256 hash of the file: 64 characters that match only this exact file. A single changed bit yields a different hash.",
       "how.s2t": "Anchored in the Doichain", "how.s2": "The hash is registered as a name in the Doichain. The block containing it carries a timestamp nobody can change afterwards.",
@@ -68,11 +75,13 @@
       "quota.left": "{ip} more proofs available for you today ({total} overall).", "quota.unlimited": "",
       "err.hash": "Please enter a valid SHA-256 hash (64 hex characters).", "err.net": "The Doichain server is not reachable right now. Please try again later.",
       "err.generic": "That did not work: {msg}", "err.big": "The file is very large, computing may take a while.",
+      "err.toobig": "Without WebAssembly this browser can only handle files up to 1 GB. Please use a current browser or compute the hash locally and enter it below.",
       "btn.renew": "Anchor again (renew)", "copied": "Copied",
       "print.status.confirmed": "Confirmed", "print.status.pending": "Pending", "print.status.expired": "Expired",
     },
   };
-  let lang = (localStorage.getItem("verifile.lang") || (navigator.language || "de").slice(0, 2)) === "en" ? "en" : "de";
+  const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* Speicher gesperrt */ } } };
+  let lang = (store.get("verifile.lang") || (navigator.language || "de").slice(0, 2)) === "en" ? "en" : "de";
   const t = (key, vars) => {
     let s = (I18N[lang] && I18N[lang][key]) || I18N.de[key] || key;
     Object.entries(vars || {}).forEach(([k, v]) => { s = s.replace(new RegExp("\\{" + k + "\\}", "g"), String(v)); });
@@ -93,19 +102,25 @@
   async function sha256File(file, onProgress) {
     const chunk = 4 * 1024 * 1024;
     if (window.hashwasm && typeof window.hashwasm.createSHA256 === "function") {
-      const hasher = await window.hashwasm.createSHA256();
-      hasher.init();
-      let offset = 0;
-      while (offset < file.size) {
-        const buf = await file.slice(offset, offset + chunk).arrayBuffer();
-        hasher.update(new Uint8Array(buf));
-        offset += buf.byteLength;
-        onProgress(Math.min(1, offset / file.size));
-        await new Promise((r) => setTimeout(r, 0));
+      try {
+        const hasher = await window.hashwasm.createSHA256();
+        hasher.init();
+        let offset = 0;
+        while (offset < file.size) {
+          const buf = await file.slice(offset, offset + chunk).arrayBuffer();
+          hasher.update(new Uint8Array(buf));
+          offset += buf.byteLength;
+          onProgress(Math.min(1, offset / file.size));
+          await new Promise((r) => setTimeout(r, 0));
+        }
+        return hasher.digest("hex");
+      } catch (e) {
+        // Bibliothek nicht nutzbar (etwa WebAssembly durch eine Richtlinie gesperrt): Rueckfall auf Web Crypto.
+        console.warn("Verifile: hash-wasm nicht nutzbar, Rueckfall auf Web Crypto", e);
       }
-      return hasher.digest("hex");
     }
     // Rueckfall ohne Bibliothek: Web Crypto braucht die ganze Datei im Speicher.
+    if (file.size > 1024 * 1024 * 1024) throw new Error(t("err.toobig"));
     const buf = await file.arrayBuffer();
     onProgress(0.9);
     const digest = await crypto.subtle.digest("SHA-256", buf);
@@ -158,9 +173,11 @@
       html = "<p class='msg'>" + t("msg.unknown") + "</p>";
       $("createBox").hidden = false; $("createBtn").textContent = t("create.btn");
     } else {
-      const v = info.value_json || {};
+      let v = info.value_json || null;
+      if (!v && info.pending_ops && info.pending_ops[0] && info.pending_ops[0].value) v = safeJson(info.pending_ops[0].value);
+      v = v || {};
       if (st === "pending") html = "<p class='msg'>" + t("msg.pending") + "</p>";
-      if (st === "confirmed") html = "<p class='msg'>" + t("msg.confirmed", { time: esc(fmtTime(info.block_time_iso)), height: info.height, conf: info.confirmations }) + "</p>";
+      if (st === "confirmed") html = "<p class='msg'>" + t("msg.confirmed", { time: esc(fmtTime(info.block_time_iso)), height: esc(info.height), conf: esc(info.confirmations) }) + "</p>";
       if (st === "expired") html = "<p class='msg'>" + t("msg.expired", { time: esc(fmtTime(info.block_time_iso)) }) + "</p>";
       const rows = [];
       if (info.block_time_iso) rows.push([t("kv.time"), esc(fmtTime(info.block_time_iso))]);
@@ -191,6 +208,7 @@
   // ---------------------------------------------------------------- Ablauf
   async function handleFile(file) {
     if (state.busy || !file) return;
+    if (file.size === 0) { $("result").hidden = false; showError(t("err.empty")); return; }
     stopPolling();
     state.busy = true; state.file = file; state.hash = null; state.info = null;
     showError("");
@@ -232,20 +250,25 @@
 
   async function create() {
     if (!state.hash || state.busy) return;
-    const btn = $("createBtn"); btn.disabled = true; showError("");
+    const btn = $("createBtn"); btn.disabled = true; showError(""); state.busy = true;
+    const hashAtStart = state.hash;
     setBadge("busy", t("st.checking"));
     try {
-      const res = await createProof(state.hash, state.file ? state.file.name : null, $("note").value.trim());
+      const filename = state.file && $("sendName").checked ? state.file.name : null;
+      const res = await createProof(hashAtStart, filename, $("note").value.trim());
+      if (state.hash !== hashAtStart) return;
       if (res.quota) state.quota = res.quota;
-      state.info = Object.assign({}, state.info, { status: "pending", pending: true, pending_ops: [{ txid: res.txid }], txid: null, explorer_tx: res.explorer, name: res.name, value_json: safeJson(res.value) });
+      state.info = Object.assign({}, state.info, { status: "pending", pending: true, pending_ops: [{ txid: res.txid, value: res.value }], txid: null, explorer_tx: res.explorer, name: res.name, value_json: safeJson(res.value) });
       $("note").value = "";
       render();
       startPolling();
     } catch (e) {
-      if (e.status === 409 && /existiert bereits|already/.test(e.message)) { await refreshStatus(); return; }
+      if (state.hash !== hashAtStart) return;
+      if (e.status === 409) { await refreshStatus(); return; }
+      if (e.status === 429) { showError(t("err.quota")); state.quota = await getQuota(); render(); return; }
       showError(t("err.generic", { msg: e.message }));
       render();
-    } finally { btn.disabled = false; renderQuota(); }
+    } finally { state.busy = false; btn.disabled = false; renderQuota(); }
   }
   const safeJson = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
 
@@ -258,7 +281,7 @@
         const info = await getStatus(state.hash);
         if (info.status !== "pending") { state.info = info; render(); stopPolling(); }
       } catch (e) { /* naechster Versuch */ }
-      if (tries > 120) stopPolling();
+      if (tries > 720) { stopPolling(); showError(t("err.polling")); }
     }, 30000);
   }
   function stopPolling() { if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; } }
@@ -327,10 +350,10 @@
   $("verifyForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const h = $("hashInput").value.trim().toLowerCase();
-    if (!HASH_RE.test(h)) { showError(t("err.hash")); $("result").hidden = false; return; }
+    if (!HASH_RE.test(h)) { showError(t("err.hash")); $("result").hidden = false; $("result").scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     checkHash(h); $("result").scrollIntoView({ behavior: "smooth", block: "center" });
   });
-  $("langToggle").addEventListener("click", () => { lang = lang === "de" ? "en" : "de"; localStorage.setItem("verifile.lang", lang); applyLang(); });
+  $("langToggle").addEventListener("click", () => { lang = lang === "de" ? "en" : "de"; store.set("verifile.lang", lang); applyLang(); });
 
   // Hash aus der Adresse (#<hash>) direkt pruefen, damit Nachweise verlinkbar sind.
   const fromUrl = (location.hash || "").replace("#", "").toLowerCase();

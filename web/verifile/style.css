@@ -67,9 +67,11 @@ h1 { font-size: clamp(2rem, 5.5vw, 3.4rem); line-height: 1.08; letter-spacing: -
 .drop-icon { color: var(--accent); margin-bottom: 8px; }
 .drop-title { font-size: 1.2rem; font-weight: 700; margin: 0 0 6px; }
 .drop-sub { color: var(--muted); margin: 0; font-size: .95rem; }
-.progress { margin-top: 20px; height: 10px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; position: relative; }
-.progress .bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .15s linear; }
-.progress span { position: absolute; right: 0; top: 14px; font-size: .8rem; color: var(--muted); }
+.progress { margin-top: 20px; height: 10px; border-radius: 999px; background: rgba(255,255,255,.08); position: relative; margin-bottom: 22px; }
+.progress .bar { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .15s linear; }
+.progress span { position: absolute; right: 0; top: 14px; font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.check { width: 100%; display: flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted); cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding: 22px; margin-top: 22px; text-align: left; animation: rise .35s ease; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

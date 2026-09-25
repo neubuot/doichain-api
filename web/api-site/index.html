@@ -170,8 +170,8 @@
         status: { path: () => "/v1/status" },
         blocks: { path: () => "/v1/blocks?count=5" },
         name: { input: { ph: "Name, zum Beispiel Ottmar", val: "Ottmar" }, path: (v) => "/v1/name/" + encodeURIComponent(v).replace(/%2F/g, "/") },
-        poe: { input: { ph: "SHA-256, 64 Hex-Zeichen", val: "" }, path: (v) => "/v1/poe/" + v.trim().toLowerCase() },
-        address: { input: { ph: "Doichain-Adresse", val: "NCQ28kfwr6Lq5rsivKxZ2UW6sZq9isQZLd" }, path: (v) => "/v1/address/" + v.trim() },
+        poe: { input: { ph: "SHA-256, 64 Hex-Zeichen", val: "" }, path: (v) => "/v1/poe/" + encodeURIComponent(v.trim().toLowerCase()) },
+        address: { input: { ph: "Doichain-Adresse", val: "NCQ28kfwr6Lq5rsivKxZ2UW6sZq9isQZLd" }, path: (v) => "/v1/address/" + encodeURIComponent(v.trim()) },
         fee: { path: () => "/v1/fee" },
       };
       let current = "status";

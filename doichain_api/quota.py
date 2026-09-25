@@ -24,9 +24,18 @@ def _today() -> str:
 
 def _connect() -> sqlite3.Connection:
     os.makedirs(settings.state_dir, exist_ok=True)
-    conn = sqlite3.connect(os.path.join(settings.state_dir, "quota.db"), timeout=5)
+    # isolation_level=None: eigene Transaktionssteuerung, BEGIN IMMEDIATE serialisiert Pruefen und Zaehlen
+    # ueber alle uvicorn-Worker hinweg (die Datei-Sperre wartet bis timeout).
+    conn = sqlite3.connect(os.path.join(settings.state_dir, "quota.db"), timeout=5, isolation_level=None)
     conn.execute("create table if not exists poe_usage (day text not null, ip text not null, n integer not null, primary key (day, ip))")
     return conn
+
+
+def release(ip: str) -> None:
+    """Einen zuvor gezaehlten Nachweis zurueckgeben, wenn die Verankerung danach fehlgeschlagen ist."""
+    day = _today()
+    with _lock, _connect() as conn:
+        conn.execute("update poe_usage set n = n - 1 where day = ? and ip = ? and n > 0", (day, ip))
 
 
 def usage(ip: str) -> dict:
@@ -51,13 +60,19 @@ def register(ip: str) -> dict:
     """Einen Nachweis fuer die IP-Adresse zaehlen oder QuotaExceeded werfen."""
     day = _today()
     with _lock, _connect() as conn:
-        row = conn.execute("select n from poe_usage where day = ? and ip = ?", (day, ip)).fetchone()
-        used_ip = int(row[0]) if row else 0
-        total = int(conn.execute("select coalesce(sum(n), 0) from poe_usage where day = ?", (day,)).fetchone()[0])
-        if used_ip >= settings.poe_public_per_ip_day:
-            raise QuotaExceeded(f"Tageskontingent dieser Adresse erschoepft ({settings.poe_public_per_ip_day} Nachweise je Tag). Morgen wieder oder mit eigenem write-Schluessel")
-        if total >= settings.poe_public_per_day:
-            raise QuotaExceeded(f"Tageskontingent der oeffentlichen App erschoepft ({settings.poe_public_per_day} Nachweise je Tag). Morgen wieder oder mit eigenem write-Schluessel")
-        conn.execute("insert into poe_usage (day, ip, n) values (?, ?, 1) on conflict(day, ip) do update set n = n + 1", (day, ip))
-        conn.execute("delete from poe_usage where day < ?", (day,))
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = conn.execute("select n from poe_usage where day = ? and ip = ?", (day, ip)).fetchone()
+            used_ip = int(row[0]) if row else 0
+            total = int(conn.execute("select coalesce(sum(n), 0) from poe_usage where day = ?", (day,)).fetchone()[0])
+            if used_ip >= settings.poe_public_per_ip_day:
+                raise QuotaExceeded(f"Tageskontingent dieser Adresse erschoepft ({settings.poe_public_per_ip_day} Nachweise je Tag). Morgen wieder oder mit eigenem write-Schluessel")
+            if total >= settings.poe_public_per_day:
+                raise QuotaExceeded(f"Tageskontingent der oeffentlichen App erschoepft ({settings.poe_public_per_day} Nachweise je Tag). Morgen wieder oder mit eigenem write-Schluessel")
+            conn.execute("insert into poe_usage (day, ip, n) values (?, ?, 1) on conflict(day, ip) do update set n = n + 1", (day, ip))
+            conn.execute("delete from poe_usage where day < ?", (day,))
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
     return usage(ip)
