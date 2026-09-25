@@ -10,8 +10,18 @@ Dokumentation (Swagger) unter `/docs`.
 as a documented REST API with API-key tiers, nginx TLS termination and rate limiting. The manual
 (`docs/Handbuch.md`) is in German.*
 
-Produktivinstanz: Hetzner-Server `doi-btc-node`, **https://doi-api.sendlabs.de/docs** (Let's Encrypt, später
-zusätzlich `api.doi.zone`). Betreiber: DOI Labs AG. Stand: Version 1.2.0, 25.09.2026.
+Produktivinstanz: Hetzner-Server `doi-btc-node`, **https://doi-api.sendlabs.de/** (Landingpage mit Spielwiese,
+`/docs` Swagger, `/poe/` die Nachweis-App Verifile), Let's Encrypt, später zusätzlich `api.doi.zone`.
+Betreiber: DOI Labs AG. Stand: Version 1.3.0, 26.09.2026.
+
+Zwei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausgeliefert:
+
+- **Verifile** (`web/verifile`): Proof of Existence für Endnutzer. Datei ins Feld ziehen, SHA-256 entsteht im Browser
+  (kein Upload), ein Klick verankert den Hash in der Doichain, die Seite zeigt Blockzeit und Bestätigungen und liefert
+  den Nachweis als JSON oder Druckansicht. Nutzt den eingeschränkten **poe**-Schlüssel mit Tageskontingent.
+  Vorgesehen für `verifile.app` beziehungsweise `verifile.it` (`deploy/nginx-verifile.conf`).
+- **Landingpage der API** (`web/api-site`): Erklärung, Live-Status der Node, Spielwiese für lesende Aufrufe,
+  Codebeispiele und Links, ausgeliefert unter `/` des API-Hosts.
 
 ## Inhalt
 
@@ -134,7 +144,9 @@ Alle Einstellungen kommen aus `/etc/doichain-api/doichain-api.env` (Vorlage: `de
 | `DOI_ELECTRUM_HOST`, `DOI_ELECTRUM_PORT` | lokaler ElectrumX | `127.0.0.1`, `50001` |
 | `DOI_EXPLORER_URL` | Basis der Explorer-Links in den Antworten | `https://doi-explorer.le-space.de` |
 | `DOI_PUBLIC_READ` | Lesen ohne Schlüssel erlauben | `true` |
-| `DOI_API_KEYS_READ`, `DOI_API_KEYS_WRITE`, `DOI_API_KEYS_ADMIN` | Schlüssel je Stufe, kommagetrennt, nur ASCII, mindestens 16 Zeichen | |
+| `DOI_API_KEYS_READ`, `DOI_API_KEYS_POE`, `DOI_API_KEYS_WRITE`, `DOI_API_KEYS_ADMIN` | Schlüssel je Stufe, kommagetrennt, nur ASCII, mindestens 16 Zeichen | |
+| `DOI_POE_PUBLIC_PER_IP_DAY`, `DOI_POE_PUBLIC_PER_DAY` | Tageskontingent des poe-Schlüssels je IP-Adresse und insgesamt (UTC-Tag) | `10`, `200` |
+| `DOI_STATE_DIR` | Ablage der Kontingent-Datenbank | `/var/lib/doichain-api` |
 | `DOI_POE_PREFIX` | Namenspräfix der Nachweise | `poe/` |
 | `DOI_MAX_UPLOAD_BYTES` | Grenze für Datei-Uploads | `52428800` |
 
@@ -145,6 +157,7 @@ Der Dienst prüft die Schlüssel beim Start und bricht mit klarer Meldung ab, we
 | Stufe | Erlaubt | Nachweis |
 |---|---|---|
 | read | alles Lesende | ohne Schlüssel (solange `DOI_PUBLIC_READ=true`), sonst Leseschlüssel |
+| poe | nur Nachweise anlegen, mit Tageskontingent je IP und insgesamt (`GET /v1/poe/quota`) | poe-Schlüssel (steht in der Verifile-App, deshalb eingeschränkt) |
 | write | PoE anlegen, `name_doi`, `name_update`, `name_new`, `name_firstupdate`, Rohtransaktion senden, Wallet lesen, Adresse anlegen, Transaktion verwerfen, `regexp` in der Namenssuche | write-Schlüssel |
 | admin | Auszahlungen, `sendtoname`, Nachricht signieren, RPC-Durchgriff | admin-Schlüssel |
 
@@ -228,11 +241,16 @@ doichain_api/
   electrum.py    Base58/Bech32-Dekodierung, Scripthash, ElectrumX-Client
   auth.py        Schlüsselstufen als OpenAPI-Sicherheitsschema
   config.py      Einstellungen aus Umgebungsvariablen, Startprüfung der Schlüssel
+  quota.py       Tageskontingent des poe-Schluessels (SQLite)
+web/
+  verifile/      PoE-Web-App (index.html, app.js, style.css, config.example.js)
+  api-site/      Landingpage der API mit Spielwiese
 deploy/
-  install.sh                 idempotenter Installer (Benutzer, venv, Zertifikat, env, systemd, nginx)
+  install.sh                 idempotenter Installer (Benutzer, venv, Zertifikat, env, systemd, nginx, Web-Oberflächen)
   push-to-server.sh          Arbeitsverzeichnis hochladen und Installer ausführen
-  doichain-api.service       systemd-Unit (gehärtet)
-  nginx-doichain-api.conf    TLS, Ratenbegrenzung, Body-Grenzen, JSON-Fehlerseiten
+  doichain-api.service       systemd-Unit (gehärtet, StateDirectory)
+  nginx-doichain-api.conf    TLS, Ratenbegrenzung, Body-Grenzen, JSON-Fehlerseiten, Landingpage und /poe/
+  nginx-verifile.conf        eigener vHost für verifile.app / verifile.it
   doichain-api.env.example   Vorlage der Umgebungsdatei
 docs/
   Handbuch.md                ausführliches Handbuch (deutsch)

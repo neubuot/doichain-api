@@ -23,7 +23,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .auth import require
+from . import quota
+from .auth import LEVELS, require
 from .config import settings
 from .electrum import AddressError, ElectrumError, electrum_call, scripthash_for_address
 from .rpc import NodeUnavailable, RPCError, rpc
@@ -90,6 +91,8 @@ Sicherheits-Fork vom September 2026).
 **Stufen:** Lesen ist ohne Schluessel moeglich (sofern `DOI_PUBLIC_READ=true`). Schreibende Aufrufe
 (Proof of Existence, `name_doi`, Namensaenderungen, Rohtransaktion senden) brauchen einen
 **write**-Schluessel, Wallet-Auszahlungen und der generische RPC-Durchgriff einen **admin**-Schluessel.
+Die oeffentliche PoE-Web-App nutzt einen **poe**-Schluessel, der nur Nachweise anlegen darf, mit Tageskontingent
+je IP-Adresse und insgesamt (`GET /v1/poe/quota`).
 Schluessel oben rechts unter **Authorize** eintragen (`ApiKey` = Header `X-API-Key`) oder als
 `Authorization: Bearer <schluessel>` senden.
 
@@ -183,6 +186,12 @@ async def electrum_error_handler(request: Request, exc: ElectrumError):
 @app.exception_handler(AddressError)
 async def address_error_handler(_: Request, exc: AddressError):
     return JSONResponse(status_code=400, content=error_body("validation", 400, str(exc)))
+
+
+@app.exception_handler(quota.QuotaExceeded)
+async def quota_handler(request: Request, exc: quota.QuotaExceeded):
+    logger.info("PoE-Kontingent erschoepft fuer %s", request.client.host if request.client else "?")
+    return JSONResponse(status_code=429, content=error_body("http", 429, str(exc)))
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -589,7 +598,7 @@ async def status(level: int = Depends(require("read"))):
     try:
         balances = await rpc.call("getbalances", wallet=True)
         trusted = balances["mine"]["trusted"]
-        if level >= 2:
+        if level >= LEVELS["write"]:
             wallet = {"name": settings.rpc_wallet, "balance": trusted, "pending": balances["mine"]["untrusted_pending"]}
         else:
             wallet = {"funded": float(trusted) > 0}
@@ -786,7 +795,7 @@ async def names_scan(
     value_encoding: str | None = Query(None, description="ascii, utf8 (Standard) oder hex"),
 ):
     prefix, after, regexp = blank_to_none(prefix), blank_to_none(after), blank_to_none(regexp)
-    if regexp is not None and level < 2:
+    if regexp is not None and level < LEVELS["write"]:
         raise HTTPException(403, "regexp ist nur mit write-Schluessel erlaubt, ohne Schluessel bitte prefix verwenden")
     options = name_options(prefix=prefix, regexp=regexp, minConf=min_conf, valueEncoding=check_encoding(value_encoding))
     cursor = after if after else start
@@ -919,6 +928,17 @@ async def send_to_name(body: SendToName):
 # Proof of Existence
 # ---------------------------------------------------------------------------
 
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unbekannt"
+
+
+@app.get("/v1/poe/quota", tags=["Proof of Existence"], summary="Verbleibendes Tageskontingent der oeffentlichen PoE-App (poe-Schluessel)", description="Mit write- oder admin-Schluessel gibt es kein Kontingent, dann steht unlimited:true.")
+async def poe_quota(request: Request, level: int = Depends(require("poe"))):
+    if level > LEVELS["poe"]:
+        return {"unlimited": True}
+    return {"unlimited": False, **quota.usage(client_ip(request))}
+
+
 @app.get("/v1/poe/{hash}", tags=["Proof of Existence"], summary="Nachweis zu einem SHA-256-Hash pruefen", description="status ist unknown (nie registriert), pending (Registrierung wartet im Mempool), confirmed (aktiv in der Kette) oder expired (abgelaufen, Beweis bleibt in der Historie).", dependencies=[Depends(require("read"))])
 async def poe_get(hash: str = Path(..., description="SHA-256 der Datei, 64 Hex-Zeichen")):
     return await poe_status(check_hash(hash))
@@ -937,23 +957,25 @@ async def poe_verify_file(file: UploadFile = File(..., description="Datei bis 50
     return result
 
 
-@app.post("/v1/poe", tags=["Proof of Existence"], summary="Nachweis anlegen (Hash als JSON, write)", status_code=201, dependencies=[Depends(require("write"))])
-async def poe_create(body: PoeCreate):
-    return await _poe_create(check_hash(body.hash), body.filename, body.note)
+@app.post("/v1/poe", tags=["Proof of Existence"], summary="Nachweis anlegen (Hash als JSON, poe oder write)", status_code=201)
+async def poe_create(body: PoeCreate, request: Request, level: int = Depends(require("poe"))):
+    return await _poe_create(check_hash(body.hash), body.filename, body.note, public=(level == LEVELS["poe"]), ip=client_ip(request))
 
 
-@app.post("/v1/poe/file", tags=["Proof of Existence"], summary="Nachweis anlegen (Datei hochladen, write)", status_code=201, dependencies=[Depends(require("write"))])
+@app.post("/v1/poe/file", tags=["Proof of Existence"], summary="Nachweis anlegen (Datei hochladen, poe oder write)", status_code=201)
 async def poe_create_file(
+    request: Request,
     file: UploadFile = File(..., description="Datei bis 50 MB, nur der Hash geht auf die Kette"),
     note: str | None = Form(None, max_length=160, description="Optionale Notiz, hoechstens 160 Zeichen (oeffentlich)"),
+    level: int = Depends(require("poe")),
 ):
     hash_hex, size = await hash_upload(file)
-    result = await _poe_create(hash_hex, file.filename, note)
+    result = await _poe_create(hash_hex, file.filename, note, public=(level == LEVELS["poe"]), ip=client_ip(request))
     result["file"] = {"name": file.filename, "size": size}
     return result
 
 
-async def _poe_create(hash_hex: str, filename: str | None, note: str | None) -> dict:
+async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, public: bool = False, ip: str = "") -> dict:
     current = await poe_status(hash_hex)
     if current["status"] == "confirmed":
         raise HTTPException(409, f"Fuer diesen Hash existiert bereits ein Nachweis (Block {current.get('height')}, {current.get('block_time_iso')}), siehe GET /v1/poe/{hash_hex}")
@@ -961,6 +983,7 @@ async def _poe_create(hash_hex: str, filename: str | None, note: str | None) -> 
         raise HTTPException(409, "Fuer diesen Hash wartet bereits eine unbestaetigte Namensoperation im Mempool")
     name = poe_name(hash_hex)
     value = build_poe_value(hash_hex, filename, note)
+    remaining = quota.register(ip) if public else None
     txid = await rpc.call("name_doi", name, value, name_options(), wallet=True)
     result = await ensure_accepted(txid)
     result.update(
@@ -972,6 +995,8 @@ async def _poe_create(hash_hex: str, filename: str | None, note: str | None) -> 
             "hint": "Nach der ersten Bestaetigung (im Mittel 10 Minuten) liefert GET /v1/poe/<hash> Blockhoehe und Zeitstempel. Erst dann ist der Nachweis endgueltig",
         }
     )
+    if remaining is not None:
+        result["quota"] = remaining
     return result
 
 

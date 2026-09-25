@@ -10,13 +10,14 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 
 from .config import settings
 
-LEVELS = {"read": 1, "write": 2, "admin": 3}
+# poe: eingeschraenkter Schluessel fuer die oeffentliche PoE-Web-App (darf nur Nachweise anlegen, mit Tageskontingent)
+LEVELS = {"read": 1, "poe": 2, "write": 3, "admin": 4}
 
 api_key_header = APIKeyHeader(
     name="X-API-Key",
     auto_error=False,
     scheme_name="ApiKey",
-    description="API-Schluessel der Stufe write oder admin (Lesen geht ohne Schluessel, solange DOI_PUBLIC_READ=true)",
+    description="API-Schluessel der Stufe poe, write oder admin (Lesen geht ohne Schluessel, solange DOI_PUBLIC_READ=true)",
 )
 bearer_scheme = HTTPBearer(
     auto_error=False,
@@ -40,6 +41,9 @@ def key_level(key: str | None) -> int:
     for candidate in settings.write_keys:
         if _same(candidate, key):
             return LEVELS["write"]
+    for candidate in settings.poe_keys:
+        if _same(candidate, key):
+            return LEVELS["poe"]
     for candidate in settings.read_keys:
         if _same(candidate, key):
             return LEVELS["read"]

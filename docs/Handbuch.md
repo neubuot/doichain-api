@@ -1,13 +1,13 @@
 # Doichain-API – Handbuch
 
-> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 25.09.2026 abends, API-Version 1.2.0, Hostname doi-api.sendlabs.de). Verweise auf interne Vault-Notizen sind als Klartext belassen.
+> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 26.09.2026, API-Version 1.3.0). Verweise auf interne Vault-Notizen sind als Klartext belassen.
 
 
 # Doichain-API – Handbuch
 
 ↩️ MOC – Doichain · Einrichtung: Einrichtungsbericht 2026-09-25 – Doichain-API auf doi-btc-node · Offene Punkte: Wiedervorlage 29.09.2026
 
-Stand: API-Version 1.2.0 vom 25.09.2026 (nach zwei unabhängigen Prüfrunden mit 44 plus 27 eingearbeiteten Befunden).
+Stand: API-Version 1.3.0 vom 26.09.2026 (Version 1.2.0 nach zwei unabhängigen Prüfrunden mit 44 plus 27 eingearbeiteten Befunden, 1.3.0 ergänzt Verifile, Landingpage und den poe-Schlüssel).
 
 ## 1. Was die API ist
 
@@ -21,6 +21,8 @@ Die Doichain-API ist eine Web-Schnittstelle vor der eigenen Doichain-Node auf de
 
 | | |
 |---|---|
+| Landingpage | **https://doi-api.sendlabs.de/** mit Erklärung, Live-Status, Spielwiese für lesende Aufrufe und Codebeispielen (Quelle `web/api-site` im Repo) |
+| Verifile (PoE-App) | **https://doi-api.sendlabs.de/poe/**, später verifile.app oder verifile.it (Abschnitt 4) |
 | Interaktive Doku (Swagger) | **https://doi-api.sendlabs.de/docs** (alternativ `/redoc`), später zusätzlich https://api.doi.zone/docs |
 | Basis-Adresse | `https://doi-api.sendlabs.de/v1/` |
 | Maschinenlesbare Beschreibung | `https://doi-api.sendlabs.de/openapi.json` |
@@ -79,6 +81,7 @@ Die Zertifikatsprüfung nie mit `-k` oder `verify=False` abschalten, sonst ginge
 | Stufe | Was geht | Schlüssel |
 |---|---|---|
 | **read** | alles Lesende: Status, Kette, Adressen, Namen lesen, PoE prüfen | ohne Schlüssel, solange `DOI_PUBLIC_READ=true` (Standard) |
+| **poe** | nur Nachweise anlegen (`POST /v1/poe`, `POST /v1/poe/file`) und das Kontingent abfragen (`GET /v1/poe/quota`), mit Tageskontingent 10 je IP-Adresse und 200 insgesamt (UTC-Tag) | poe-Schlüssel, steckt in der Verifile-App und ist deshalb im Browser sichtbar |
 | **write** | PoE anlegen, `name_doi`, `name_update`, `name_new`, `name_firstupdate`, Rohtransaktion senden, Wallet lesen, neue Empfangsadresse, Transaktion verwerfen | write-Schlüssel |
 | **admin** | Auszahlungen (`/v1/wallet/send`), `sendtoname`, Nachricht signieren, generischer RPC-Durchgriff | admin-Schlüssel (darf auch alles der Stufe write) |
 
@@ -92,7 +95,7 @@ ssh root@136.243.155.62 "grep -E '^DOI_API_KEYS_(WRITE|ADMIN)=' /etc/doichain-ap
 
 Danach nur noch aus Vaultwarden verwenden. Wer den admin-Schlüssel hat, kann das Node-Wallet leeren, also sparsam weitergeben.
 
-**Schlüssel ändern oder weitere anlegen.** In der Umgebungsdatei stehen die Schlüssel kommagetrennt (`DOI_API_KEYS_WRITE=abc,def`). Neuen Wert erzeugen mit `openssl rand -hex 24`, Datei bearbeiten, dann `systemctl restart doichain-api`. Mit `DOI_API_KEYS_READ=` lassen sich zusätzlich Leseschlüssel vergeben, sinnvoll, wenn `DOI_PUBLIC_READ=false` gesetzt wird und das Lesen nicht mehr öffentlich sein soll.
+**Schlüssel ändern oder weitere anlegen.** In der Umgebungsdatei stehen die Schlüssel kommagetrennt (`DOI_API_KEYS_WRITE=abc,def`). Neuen Wert erzeugen mit `openssl rand -hex 24`, Datei bearbeiten, dann `systemctl restart doichain-api`. Mit `DOI_API_KEYS_READ=` lassen sich zusätzlich Leseschlüssel vergeben, sinnvoll, wenn `DOI_PUBLIC_READ=false` gesetzt wird und das Lesen nicht mehr öffentlich sein soll. Der poe-Schlüssel (`DOI_API_KEYS_POE`) wird nach einer Änderung mit `bash deploy/install.sh` neu in die `config.js` der Verifile-App geschrieben. Die Kontingente stehen in `DOI_POE_PUBLIC_PER_IP_DAY` und `DOI_POE_PUBLIC_PER_DAY`, die Zähler in `/var/lib/doichain-api/quota.db` (werden beim Tageswechsel UTC zurückgesetzt).
 
 **Ratenbegrenzung.** nginx erlaubt 10 Anfragen pro Sekunde je IP-Adresse (Spitzen bis 30), auf den beiden Datei-Upload-Endpunkten 1 pro Sekunde (Spitzen bis 3). Darüber kommt HTTP 429 im JSON-Fehlerformat.
 
@@ -125,8 +128,13 @@ Regeln der Kette, die man kennen sollte:
 | `GET /v1/poe/{hash}` | read | Nachweis zu einem Hash prüfen |
 | `POST /v1/poe/verify` mit `{"hash": "…"}` | read | dasselbe als POST |
 | `POST /v1/poe/verify/file` (Multipart, Feld `file`) | read | Datei hochladen, Hash wird auf dem Server berechnet und geprüft |
-| `POST /v1/poe` mit `{"hash": "…", "filename": "…", "note": "…"}` | write | Nachweis anlegen, Hash lokal berechnet |
-| `POST /v1/poe/file` (Multipart, Felder `file` und optional `note`) | write | Datei hochladen, Hash berechnen, Nachweis anlegen (bis 50 MB) |
+| `POST /v1/poe` mit `{"hash": "…", "filename": "…", "note": "…"}` | poe oder write | Nachweis anlegen, Hash lokal berechnet. Mit poe-Schlüssel zählt das Tageskontingent, die Antwort enthält dann `quota` |
+| `POST /v1/poe/file` (Multipart, Felder `file` und optional `note`) | poe oder write | Datei hochladen, Hash berechnen, Nachweis anlegen (bis 50 MB) |
+| `GET /v1/poe/quota` | poe | verbleibendes Tageskontingent für die eigene IP-Adresse und insgesamt (`unlimited: true` mit write- oder admin-Schlüssel) |
+
+### Verifile, die Web-App
+
+Für Endnutzer gibt es die App **Verifile** unter https://doi-api.sendlabs.de/poe/ (später auf einer eigenen Domain, verifile.app oder verifile.it): Datei ins Feld ziehen, der Browser berechnet den SHA-256 (gestückelt über die Bibliothek hash-wasm, damit auch Gigabyte-Dateien gehen, Rückfall auf Web Crypto), nichts wird hochgeladen. Die App fragt den Status ab, verankert auf Klick über den poe-Schlüssel, aktualisiert sich alle 30 Sekunden bis zur Bestätigung und liefert den Nachweis als JSON-Datei oder Druckansicht. Ein bekannter Hash lässt sich direkt eingeben oder als `#<hash>` an die Adresse hängen, so werden Nachweise verlinkbar. Sprache Deutsch und Englisch (Schalter oben rechts, Wahl bleibt im Browser gespeichert). Quellcode im Repo unter `web/verifile`, Konfiguration `config.js` erzeugt der Installer aus der Umgebungsdatei. Solange die App unter dem API-Host läuft, gelten die dortigen Sicherheits-Header, auf der eigenen Domain die Vorlage `deploy/nginx-verifile.conf` mit Content-Security-Policy.
 
 ### Antwort beim Prüfen
 
@@ -296,7 +304,9 @@ Einstellungen in der Umgebungsdatei:
 | `DOI_ELECTRUM_HOST`, `DOI_ELECTRUM_PORT` | lokaler ElectrumX für Adressabfragen | 127.0.0.1, 50001 |
 | `DOI_EXPLORER_URL` | Basis der Explorer-Links | https://doi-explorer.le-space.de |
 | `DOI_PUBLIC_READ` | Lesen ohne Schlüssel erlauben | true |
-| `DOI_API_KEYS_READ`, `DOI_API_KEYS_WRITE`, `DOI_API_KEYS_ADMIN` | Schlüssel je Stufe, kommagetrennt | |
+| `DOI_API_KEYS_READ`, `DOI_API_KEYS_POE`, `DOI_API_KEYS_WRITE`, `DOI_API_KEYS_ADMIN` | Schlüssel je Stufe, kommagetrennt | |
+| `DOI_POE_PUBLIC_PER_IP_DAY`, `DOI_POE_PUBLIC_PER_DAY` | Tageskontingent des poe-Schlüssels je IP-Adresse und insgesamt | 10, 200 |
+| `DOI_STATE_DIR` | Ablage der Kontingent-Datenbank (systemd `StateDirectory`) | `/var/lib/doichain-api` |
 | `DOI_POE_PREFIX` | Namenspräfix der Nachweise | `poe/` (nicht mehr ändern, sobald Nachweise existieren) |
 | `DOI_MAX_UPLOAD_BYTES` | Upload-Grenze der API (nginx erlaubt 52 MB) | 52428800 (50 MB) |
 
@@ -313,10 +323,12 @@ Einstellungen in der Umgebungsdatei:
    ```
 
    (bei beiden Namen zusätzlich `-d doi-api.sendlabs.de`). certbot trägt das Zertifikat in den nginx-Block ein und verlängert es automatisch. Danach entfällt `--cacert`, und in `/etc/nginx/sites-available/doichain-api` kann `add_header Strict-Transport-Security "max-age=31536000" always;` ergänzt werden. `api.doi.zone` und `doi-api.sendlabs.de` sind dort bereits als `server_name` eingetragen und im Übergangszertifikat enthalten, ein anderer Name muss an beiden Stellen ergänzt werden. Spätere API-Updates lassen die von certbot bearbeitete nginx-Datei in Ruhe (Abschnitt 11).
-2. **Wallet füllen.** 20 bis 50 DOI an `NGTRDaWzP5o4wky4Uyx2CM5gDQo3Qw3MMn` senden (aus dem privaten Wallet oder Electrum-DOI). Nach einer Bestätigung zeigt `GET /v1/wallet` das Guthaben.
-3. **Erster Nachweis.** `POST /v1/poe` mit einem Testhash (write-Schlüssel), nach dem nächsten Block `GET /v1/poe/{hash}` und den Explorer-Link öffnen. Damit ist der Schreibpfad einmal durchlaufen. Danach einmal `POST /v1/wallet/send` mit einem Kleinstbetrag an eine eigene Adresse, damit auch die Auszahlung einmal geprüft ist.
-4. **David informieren** (Gmail-Entwurf „doi-btc-node: Node auf v31.1.6 und neue REST-API" liegt bereit).
-5. Optional: `DOI_PUBLIC_READ=false` setzen und Leseschlüssel vergeben, wenn die API nicht öffentlich lesbar sein soll.
+2. **Wallet füllen.** Erledigt am 25.09.2026 (50 DOI an `NGTRDaWzP5o4wky4Uyx2CM5gDQo3Qw3MMn`). Nachfüllen, wenn `GET /v1/wallet` unter etwa 5 DOI meldet, jeder Nachweis kostet rund 0,0105 DOI.
+3. **Erster Nachweis.** Erledigt am 26.09.2026 (README.md und CHANGELOG.md des Repos per API, ein Testnachweis über die Verifile-App). Noch offen: einmal `POST /v1/wallet/send` mit einem Kleinstbetrag an eine eigene Adresse, damit auch die Auszahlung einmal geprüft ist.
+4. **Verifile-Domain.** `verifile.app` oder `verifile.it` als A-Record (plus `www`) auf 136.243.155.62 setzen, dann auf dem Server `certbot --nginx -d verifile.app -d www.verifile.app --redirect -m ottmar.neuburger@webanizer.de --agree-tos -n`. Der nginx-vHost wartet schon auf Port 80. Danach in `config.js` nichts zu ändern, die App spricht weiter mit https://doi-api.sendlabs.de.
+5. **Impressum und Datenschutz** für Verifile und Landingpage (derzeit Link auf https://doi-labs.li/impressum, Zieladresse prüfen).
+6. **David informieren** (Gmail-Entwurf „doi-btc-node: Node auf v31.1.6 und neue REST-API" liegt bereit).
+7. Optional: `DOI_PUBLIC_READ=false` setzen und Leseschlüssel vergeben, wenn die API nicht öffentlich lesbar sein soll.
 
 ## 13. Sicherheit in Kürze
 

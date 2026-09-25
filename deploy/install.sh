@@ -52,11 +52,38 @@ if [ ! -f "$ENV_FILE" ]; then
     "DOI_API_KEYS_READ=" \
     "DOI_API_KEYS_WRITE=$(openssl rand -hex 24)" \
     "DOI_API_KEYS_ADMIN=$(openssl rand -hex 24)" \
+    "# Schluessel der oeffentlichen PoE-Web-App (nur Nachweise anlegen, Tageskontingent)" \
+    "DOI_API_KEYS_POE=$(openssl rand -hex 24)" \
+    "DOI_POE_PUBLIC_PER_IP_DAY=10" \
+    "DOI_POE_PUBLIC_PER_DAY=200" \
     "DOI_POE_PREFIX=poe/" \
     "DOI_MAX_UPLOAD_BYTES=52428800" > "$ENV_FILE"
   chown root:doiapi "$ENV_FILE"; chmod 0640 "$ENV_FILE"
   echo "Umgebungsdatei $ENV_FILE neu angelegt (Schluessel dort ablesen und in Vaultwarden sichern)."
 fi
+
+# poe-Schluessel fuer die oeffentliche Verifile-App nachtragen, falls die Umgebungsdatei aelter ist.
+if ! grep -q "^DOI_API_KEYS_POE=" "$ENV_FILE"; then
+  printf "%s\n" "# Schluessel der oeffentlichen PoE-Web-App (nur Nachweise anlegen, Tageskontingent)" "DOI_API_KEYS_POE=$(openssl rand -hex 24)" "DOI_POE_PUBLIC_PER_IP_DAY=10" "DOI_POE_PUBLIC_PER_DAY=200" >> "$ENV_FILE"
+  echo "poe-Schluessel in $ENV_FILE ergaenzt."
+fi
+
+# Web-Oberflaechen: Landingpage der API und Verifile-App (config.js mit dem poe-Schluessel wird erzeugt).
+install -d -m 0755 /var/www/doichain-api-site /var/www/verifile
+rsync -a --delete "$SRC/web/api-site/" /var/www/doichain-api-site/
+rsync -a --delete --exclude "config.js" --exclude "config.example.js" "$SRC/web/verifile/" /var/www/verifile/
+POE_KEY=$(grep -E "^DOI_API_KEYS_POE=" "$ENV_FILE" | head -1 | cut -d= -f2- | cut -d, -f1)
+API_BASE=${DOI_API_PUBLIC_URL:-https://doi-api.sendlabs.de}
+printf 'window.VERIFILE_CONFIG = { apiBase: "%s", poeKey: "%s", explorer: "https://doi-explorer.le-space.de" };\n' "$API_BASE" "$POE_KEY" > /var/www/verifile/config.js
+chmod 0644 /var/www/verifile/config.js
+chown -R root:root /var/www/doichain-api-site /var/www/verifile
+NGXV=/etc/nginx/sites-available/verifile
+if [ -f "$NGXV" ] && grep -q "managed by Certbot" "$NGXV"; then
+  echo "HINWEIS: $NGXV enthaelt certbot-Eintraege und bleibt unveraendert."
+else
+  install -m 0644 "$SRC/deploy/nginx-verifile.conf" "$NGXV"
+fi
+ln -sf "$NGXV" /etc/nginx/sites-enabled/verifile
 
 # Einzahlungsadresse mit Label api-funding einmalig anlegen (nur wenn die Node erreichbar ist).
 if command -v doichain-cli >/dev/null && [ -d /home/doichain/.doichain ]; then

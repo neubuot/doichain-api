@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verifile – Proof of Existence auf der Doichain</title>
+  <meta name="description" content="Datei ablegen, Fingerabdruck im Browser berechnen, in der Doichain verankern und jederzeit nachweisen. Die Datei verlässt Ihren Rechner nie.">
+  <meta name="theme-color" content="#0b1020">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1020'/%3E%3Cpath d='M18 34l10 10 18-22' fill='none' stroke='%2334d399' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="grid"></div></div>
+
+  <header class="top">
+    <a class="brand" href="./">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 64 64" width="28" height="28"><rect width="64" height="64" rx="14" fill="#101736"/><path d="M18 34l10 10 18-22" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>Verifile</span>
+    </a>
+    <nav class="nav">
+      <a href="#how" data-i18n="nav.how">So funktioniert es</a>
+      <a href="#verify" data-i18n="nav.verify">Nachweis prüfen</a>
+      <a href="#faq">FAQ</a>
+      <button class="lang" id="langToggle" type="button" aria-label="Sprache wechseln">EN</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow" data-i18n="hero.eyebrow">Proof of Existence auf der Doichain</p>
+      <h1 data-i18n="hero.title">Beweisen Sie, dass eine Datei heute existiert.</h1>
+      <p class="lead" data-i18n="hero.lead">Ihr Dokument bleibt auf Ihrem Rechner. Der Browser berechnet einen Fingerabdruck (SHA-256), Verifile verankert ihn in der Doichain. Ab dann kann jeder prüfen, dass genau diese Datei zu diesem Zeitpunkt existierte.</p>
+
+      <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint">
+        <input type="file" id="fileInput" hidden>
+        <div class="drop-inner">
+          <div class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="44" height="44"><path d="M24 30V10m0 0l-8 8m8-8l8 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 30v6a4 4 0 004 4h20a4 4 0 004-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          </div>
+          <p class="drop-title" data-i18n="drop.title">Datei hierher ziehen oder klicken</p>
+          <p class="drop-sub" id="dropHint" data-i18n="drop.sub">Jede Dateiart, jede Größe. Es wird nichts hochgeladen.</p>
+        </div>
+        <div class="progress" id="progress" hidden><div class="bar" id="bar"></div><span id="progressText"></span></div>
+      </div>
+
+      <div class="card result" id="result" hidden>
+        <div class="file-row">
+          <div class="file-meta">
+            <div class="file-name" id="fileName"></div>
+            <div class="file-size" id="fileSize"></div>
+          </div>
+          <span class="badge" id="badge"></span>
+        </div>
+        <div class="hash-row">
+          <span class="hash-label">SHA-256</span>
+          <code class="hash" id="hashOut"></code>
+          <button class="icon-btn" id="copyHash" type="button" data-i18n-title="btn.copy" title="Kopieren">
+            <svg viewBox="0 0 24 24" width="18" height="18"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a1 1 0 011-1h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <div class="status" id="statusBox"></div>
+
+        <div class="actions" id="createBox" hidden>
+          <label class="note-label" for="note"><span data-i18n="create.note">Notiz (optional, öffentlich sichtbar, höchstens 160 Zeichen)</span></label>
+          <input type="text" id="note" maxlength="160" placeholder="z. B. Vertrag Version 3">
+          <button class="btn primary" id="createBtn" type="button" data-i18n="create.btn">Jetzt in der Doichain verankern</button>
+          <p class="quota" id="quota"></p>
+        </div>
+
+        <div class="actions" id="doneBox" hidden>
+          <button class="btn" id="downloadBtn" type="button" data-i18n="btn.download">Nachweis herunterladen (JSON)</button>
+          <button class="btn" id="printBtn" type="button" data-i18n="btn.print">Nachweis drucken</button>
+          <a class="btn ghost" id="explorerLink" target="_blank" rel="noopener" data-i18n="btn.explorer">Im Explorer ansehen</a>
+        </div>
+        <p class="error" id="error" hidden></p>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <h2 data-i18n="how.title">So funktioniert es</h2>
+      <div class="steps">
+        <div class="step"><span class="num">1</span><h3 data-i18n="how.s1t">Fingerabdruck im Browser</h3><p data-i18n="how.s1">Aus Ihrer Datei berechnet der Browser einen SHA-256-Hash, 64 Zeichen, die nur zu genau dieser Datei passen. Ein einziges geändertes Bit ergibt einen anderen Hash.</p></div>
+        <div class="step"><span class="num">2</span><h3 data-i18n="how.s2t">Verankerung in der Doichain</h3><p data-i18n="how.s2">Der Hash wird als Name in der Doichain registriert. Der Block, der ihn enthält, trägt einen Zeitstempel, den niemand nachträglich ändern kann.</p></div>
+        <div class="step"><span class="num">3</span><h3 data-i18n="how.s3t">Nachweis für jeden</h3><p data-i18n="how.s3">Wer die Datei besitzt, berechnet den Hash erneut und findet den Eintrag samt Blockzeit. Dazu genügt diese Seite oder jeder Doichain-Explorer.</p></div>
+      </div>
+    </section>
+
+    <section class="section" id="verify">
+      <h2 data-i18n="verify.title">Nachweis prüfen</h2>
+      <p data-i18n="verify.lead">Datei oben ablegen, oder einen bekannten Hash direkt eingeben.</p>
+      <form class="verify-form" id="verifyForm">
+        <input type="text" id="hashInput" placeholder="SHA-256, 64 Hex-Zeichen" spellcheck="false" autocomplete="off">
+        <button class="btn primary" type="submit" data-i18n="verify.btn">Prüfen</button>
+      </form>
+    </section>
+
+    <section class="section" id="faq">
+      <h2>FAQ</h2>
+      <details><summary data-i18n="faq.q1">Wird meine Datei hochgeladen?</summary><p data-i18n="faq.a1">Nein. Der Hash wird mit der Web-Crypto-Funktion Ihres Browsers berechnet. Nur die 64 Zeichen des Hashes werden an den Doichain-Server übertragen. Aus dem Hash lässt sich die Datei nicht rekonstruieren.</p></details>
+        <details><summary data-i18n="faq.q2">Was kostet das?</summary><p data-i18n="faq.a2">Für Sie nichts. Die Doichain-Gebühr und das Namenspfand trägt DOI Labs. Damit das so bleibt, gibt es ein Tageskontingent je Nutzer.</p></details>
+        <details><summary data-i18n="faq.q3">Wann ist der Nachweis gültig?</summary><p data-i18n="faq.a3">Nach der ersten Bestätigung, im Mittel etwa zehn Minuten nach dem Verankern. Die Seite zeigt den Stand automatisch an. Der Eintrag bleibt 36.000 Blöcke (rund 250 Tage) aktiv und danach dauerhaft in der Kettenhistorie sichtbar. Ein erneutes Verankern verlängert ihn.</p></details>
+        <details><summary data-i18n="faq.q4">Wie beweise ich das später einem Dritten?</summary><p data-i18n="faq.a4">Übergeben Sie die Datei und den heruntergeladenen Nachweis (JSON). Der Dritte berechnet den Hash der Datei, vergleicht ihn mit dem Nachweis und schaut den Eintrag im Doichain-Explorer nach. Beides geht ohne Verifile.</p></details>
+        <details><summary data-i18n="faq.q5">Was ist die Doichain?</summary><p data-i18n="faq.a5">Eine öffentliche Blockchain der Bitcoin-Familie, die per Merged Mining von Bitcoins Rechenleistung gesichert wird. Sie ist auf fälschungssichere Nachweise ausgelegt, personenbezogene Daten gehören nie auf die Kette.</p></details>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p><span data-i18n="foot.by">Ein Dienst der DOI Labs AG auf Basis der</span> <a href="https://doi-api.sendlabs.de/" target="_blank" rel="noopener">Doichain API</a>. <span data-i18n="foot.privacy">Keine Cookies, kein Tracking, keine Uploads.</span></p>
+    <p><a href="https://doi-labs.li/" target="_blank" rel="noopener">DOI Labs</a> · <a href="https://doi-explorer.le-space.de" target="_blank" rel="noopener">Doichain Explorer</a> · <a href="https://doi-api.sendlabs.de/docs" target="_blank" rel="noopener">API</a> · <a href="https://doi-labs.li/impressum" target="_blank" rel="noopener" data-i18n="foot.imprint">Impressum</a></p>
+  </footer>
+
+  <template id="printTemplate">
+    <div class="print-sheet">
+      <h1>Proof of Existence</h1>
+      <p class="print-sub">Verifile · Doichain</p>
+      <table>
+        <tr><th>Datei / File</th><td class="p-file"></td></tr>
+        <tr><th>SHA-256</th><td class="p-hash mono"></td></tr>
+        <tr><th>Status</th><td class="p-status"></td></tr>
+        <tr><th>Block</th><td class="p-height"></td></tr>
+        <tr><th>Blockzeit / Block time (UTC)</th><td class="p-time"></td></tr>
+        <tr><th>Transaktion / Transaction</th><td class="p-txid mono"></td></tr>
+        <tr><th>Name in der Doichain</th><td class="p-name mono"></td></tr>
+        <tr><th>Explorer</th><td class="p-explorer mono"></td></tr>
+      </table>
+      <p class="print-note">Prüfung: SHA-256 der Datei berechnen, mit dem Hash vergleichen, Eintrag im Explorer oder unter https://doi-api.sendlabs.de/v1/poe/&lt;hash&gt; nachschlagen. Verification: compute the file's SHA-256, compare, look up the entry in the explorer or via the API.</p>
+      <p class="print-date"></p>
+    </div>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/index.umd.min.js" crossorigin="anonymous"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

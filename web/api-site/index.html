@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doichain API – Proof of Existence, Namen und Kette per HTTP</title>
+  <meta name="description" content="REST-Schnittstelle zur Doichain: Proof of Existence, name_doi, Namen, Blöcke, Transaktionen, Adressen. Mit Live-Spielwiese, Beispielen und interaktiver Dokumentation.">
+  <meta name="theme-color" content="#0b1020">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1020'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%2360a5fa' stroke-width='6'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%2334d399'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#0b1020; --bg2:#101736; --card:rgba(255,255,255,.06); --border:rgba(255,255,255,.12); --text:#e8ecf8; --muted:#9aa5c4; --accent:#34d399; --blue:#60a5fa; --violet:#a78bfa; --warn:#fbbf24; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace; }
+    * { box-sizing:border-box } html { scroll-behavior:smooth }
+    body { margin:0; font-family:"Inter",system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.55; -webkit-font-smoothing:antialiased }
+    a { color:var(--blue); text-decoration:none } a:hover { text-decoration:underline }
+    .bg { position:fixed; inset:0; z-index:-1; overflow:hidden }
+    .orb { position:absolute; border-radius:50%; filter:blur(90px); opacity:.5 }
+    .orb.a { width:55vw; height:55vw; left:-18vw; top:-22vw; background:radial-gradient(circle,#1d4ed8,transparent 65%) }
+    .orb.b { width:45vw; height:45vw; right:-12vw; top:30vh; background:radial-gradient(circle,#059669,transparent 65%) }
+    .grid { position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px); background-size:48px 48px; mask-image:radial-gradient(ellipse at 50% 20%,black 25%,transparent 70%) }
+    header { display:flex; justify-content:space-between; align-items:center; padding:18px clamp(16px,4vw,48px); gap:16px }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:1.1rem; color:var(--text) } .brand:hover { text-decoration:none }
+    nav { display:flex; gap:18px; font-size:.95rem; font-weight:500 } nav a { color:var(--muted) } nav a:hover { color:var(--text); text-decoration:none }
+    @media (max-width:700px) { nav { display:none } }
+    main { max-width:1040px; margin:0 auto; padding:0 clamp(16px,4vw,32px) 72px }
+    .hero { padding:clamp(24px,6vw,72px) 0 24px; text-align:center }
+    .eyebrow { color:var(--accent); font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:.78rem; margin:0 0 12px }
+    h1 { font-size:clamp(2rem,5.5vw,3.6rem); line-height:1.06; letter-spacing:-.03em; margin:0 0 18px; font-weight:800 }
+    h1 .g { background:linear-gradient(90deg,var(--accent),var(--blue),var(--violet)); -webkit-background-clip:text; background-clip:text; color:transparent }
+    .lead { color:var(--muted); font-size:clamp(1rem,2vw,1.2rem); max-width:720px; margin:0 auto 28px }
+    .cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap }
+    .btn { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:12px; padding:12px 18px; font:inherit; font-weight:600; cursor:pointer; transition:transform .15s } .btn:hover { transform:translateY(-1px); text-decoration:none }
+    .btn.primary { background:linear-gradient(120deg,var(--accent),#10b981); color:#062015; border-color:transparent; box-shadow:0 10px 30px rgba(52,211,153,.25) }
+    .status-line { margin-top:26px; display:inline-flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:center; padding:10px 16px; border-radius:999px; background:var(--card); border:1px solid var(--border); font-size:.9rem; color:var(--muted) }
+    .dot { width:9px; height:9px; border-radius:50%; background:var(--warn); box-shadow:0 0 10px currentColor; display:inline-block } .dot.ok { background:var(--accent); color:var(--accent) } .dot.bad { background:#f87171; color:#f87171 }
+    section { margin-top:clamp(48px,8vw,88px) }
+    h2 { font-size:clamp(1.4rem,3vw,2rem); letter-spacing:-.02em; margin:0 0 8px } .sub { color:var(--muted); margin:0 0 22px }
+    .features { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px }
+    .feat { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:20px }
+    .feat .ic { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; background:rgba(96,165,250,.15); color:var(--blue); margin-bottom:10px } .feat h3 { margin:0 0 6px; font-size:1.02rem } .feat p { margin:0; color:var(--muted); font-size:.93rem } .feat code { font-family:var(--mono); font-size:.8rem; color:var(--accent) }
+    .play { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:18px; backdrop-filter:blur(14px) }
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px } .tab { border:1px solid var(--border); background:transparent; color:var(--muted); border-radius:999px; padding:8px 14px; font:inherit; font-weight:600; cursor:pointer } .tab.on { color:var(--text); border-color:var(--accent); background:rgba(52,211,153,.1) }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0 12px }
+    .row input { flex:1 1 300px; background:rgba(0,0,0,.28); border:1px solid var(--border); color:var(--text); border-radius:12px; padding:11px 14px; font:inherit; font-family:var(--mono); font-size:.88rem } .row input:focus { outline:none; border-color:var(--blue) }
+    .url { font-family:var(--mono); font-size:.82rem; color:var(--muted); word-break:break-all; margin:0 0 8px } .url b { color:var(--accent); font-weight:600 }
+    pre { margin:0; background:rgba(0,0,0,.35); border:1px solid var(--border); border-radius:14px; padding:14px; overflow:auto; max-height:420px; font-family:var(--mono); font-size:.82rem; line-height:1.5 }
+    .k { color:#93c5fd } .s { color:#86efac } .n { color:#fcd34d } .b { color:#c4b5fd } .c { color:var(--muted) }
+    .meta { color:var(--muted); font-size:.82rem; margin:8px 0 0 }
+    .code-tabs pre { max-height:none } .code-tabs .tab { font-size:.9rem }
+    table { width:100%; border-collapse:collapse; font-size:.95rem } th,td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top } th { color:var(--muted); font-weight:600 } td code { font-family:var(--mono); font-size:.82rem; color:var(--accent) }
+    .links { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px } .link { display:block; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; color:var(--text) } .link:hover { text-decoration:none; border-color:var(--blue) } .link small { display:block; color:var(--muted); margin-top:4px }
+    footer { text-align:center; color:var(--muted); font-size:.88rem; padding:32px 16px 48px; border-top:1px solid var(--border) } footer p { margin:6px 0 }
+  </style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="orb a"></div><div class="orb b"></div><div class="grid"></div></div>
+  <header>
+    <a class="brand" href="/"><svg viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#101736"/><circle cx="32" cy="32" r="13" fill="none" stroke="#60a5fa" stroke-width="6"/><circle cx="32" cy="32" r="4" fill="#34d399"/></svg>Doichain API</a>
+    <nav><a href="#features">Funktionen</a><a href="#play">Spielwiese</a><a href="#code">Code</a><a href="#access">Zugriff</a><a href="/docs">Doku</a></nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">REST-API vor Doichain Core v31.1.6</p>
+      <h1>Die Doichain <span class="g">per HTTP</span>.<br>Nachweise, Namen, Kette.</h1>
+      <p class="lead">Eine Schnittstelle, mit der jedes Programm die Doichain nutzt, ohne eigene Node und ohne JSON-RPC: Proof of Existence anlegen und prüfen, Namen mit <code>name_doi</code> registrieren, Blöcke, Transaktionen und Adressguthaben abfragen. Lesen ist frei, Schreiben braucht einen Schlüssel.</p>
+      <div class="cta">
+        <a class="btn primary" href="/docs">Interaktive Dokumentation</a>
+        <a class="btn" href="/poe/">Verifile: Nachweis-App</a>
+        <a class="btn" href="#play">Direkt ausprobieren</a>
+      </div>
+      <div class="status-line" id="statusLine"><span class="dot" id="dot"></span><span id="statusText">Node wird abgefragt …</span></div>
+    </section>
+
+    <section id="features">
+      <h2>Was die API kann</h2>
+      <p class="sub">Alle Doichain-Funktionen in sieben Gruppen, jede Antwort als JSON mit fertigen Explorer-Links.</p>
+      <div class="features">
+        <div class="feat"><div class="ic">✓</div><h3>Proof of Existence</h3><p>SHA-256 einer Datei als Name <code>poe/&lt;hash&gt;</code> verankern und prüfen: <code>GET /v1/poe/{hash}</code>, <code>POST /v1/poe</code>, Datei-Upload optional.</p></div>
+        <div class="feat"><div class="ic">⌘</div><h3>Namen und name_doi</h3><p>Lesen, durchsuchen, Historie, registrieren, verlängern, übertragen: <code>/v1/name/…</code>, <code>/v1/names</code>, <code>POST /v1/name/doi</code>.</p></div>
+        <div class="feat"><div class="ic">⛓</div><h3>Kette</h3><p>Blöcke, Transaktionen mit dekodierten Namensoperationen, Mempool, Netzwerk: <code>/v1/blocks</code>, <code>/v1/block/{id}</code>, <code>/v1/tx/{txid}</code>.</p></div>
+        <div class="feat"><div class="ic">◎</div><h3>Adressen</h3><p>Guthaben, Historie und UTXOs beliebiger Adressen (<code>N…</code>, <code>6…</code>, <code>dc1q…</code>) über den lokalen ElectrumX.</p></div>
+        <div class="feat"><div class="ic">▣</div><h3>Wallet</h3><p>Guthaben, Adressen, Auszahlungen mit fester Gebührenrate, nur mit Schlüssel: <code>/v1/wallet/…</code>.</p></div>
+        <div class="feat"><div class="ic">⚙</div><h3>Werkzeuge</h3><p>Adressen prüfen, Nachrichten signieren und prüfen, Gebührenempfehlung, generischer RPC-Durchgriff mit Sperrliste.</p></div>
+        <div class="feat"><div class="ic">♥</div><h3>Betrieb</h3><p><code>/health</code> meldet nur dann ok, wenn die Kette synchron ist und die Fork-Prüfung stimmt. Einheitliches Fehlerformat, OpenAPI 3.1.</p></div>
+      </div>
+    </section>
+
+    <section id="play">
+      <h2>Spielwiese</h2>
+      <p class="sub">Lesende Aufrufe direkt gegen die laufende Node, ohne Schlüssel. Die Antwort kommt live von der Doichain.</p>
+      <div class="play">
+        <div class="tabs" id="playTabs">
+          <button class="tab on" data-p="status">Status</button>
+          <button class="tab" data-p="blocks">Letzte Blöcke</button>
+          <button class="tab" data-p="name">Name nachschlagen</button>
+          <button class="tab" data-p="poe">Nachweis prüfen</button>
+          <button class="tab" data-p="address">Adresse</button>
+          <button class="tab" data-p="fee">Gebühren</button>
+        </div>
+        <div class="row" id="playRow"></div>
+        <p class="url" id="playUrl"></p>
+        <pre id="playOut">…</pre>
+        <p class="meta" id="playMeta"></p>
+      </div>
+    </section>
+
+    <section id="code">
+      <h2>In drei Zeilen eingebunden</h2>
+      <p class="sub">Beispiele für die häufigsten Aufgaben. Schreibende Aufrufe brauchen den Header <code style="font-family:var(--mono)">X-API-Key</code>.</p>
+      <div class="play code-tabs">
+        <div class="tabs" id="codeTabs"><button class="tab on" data-c="curl">curl</button><button class="tab" data-c="py">Python</button><button class="tab" data-c="js">JavaScript</button></div>
+        <pre id="codeOut"></pre>
+      </div>
+    </section>
+
+    <section id="access">
+      <h2>Zugriffsstufen</h2>
+      <p class="sub">Lesen ist öffentlich, alles Schreibende ist an Schlüssel gebunden, die im Header mitgeschickt werden.</p>
+      <table>
+        <tr><th>Stufe</th><th>Erlaubt</th><th>Schlüssel</th></tr>
+        <tr><td><strong>read</strong></td><td>Status, Kette, Adressen, Namen lesen, Nachweise prüfen</td><td>keiner</td></tr>
+        <tr><td><strong>poe</strong></td><td>Nachweise anlegen (für die Verifile-App, mit Tageskontingent)</td><td>poe-Schlüssel</td></tr>
+        <tr><td><strong>write</strong></td><td>Nachweise, <code>name_doi</code>, Namensänderungen, Rohtransaktion senden, Wallet lesen</td><td>write-Schlüssel</td></tr>
+        <tr><td><strong>admin</strong></td><td>Auszahlungen, Signieren, RPC-Durchgriff</td><td>admin-Schlüssel</td></tr>
+      </table>
+    </section>
+
+    <section id="links">
+      <h2>Für Entwickler</h2>
+      <div class="links">
+        <a class="link" href="/docs">Swagger UI<small>Jeden Endpunkt im Browser ausprobieren, Schlüssel per Authorize</small></a>
+        <a class="link" href="/redoc">ReDoc<small>Die Referenz zum Lesen</small></a>
+        <a class="link" href="/openapi.json">openapi.json<small>Für Client-Generatoren und Postman</small></a>
+        <a class="link" href="https://doi-explorer.le-space.de" target="_blank" rel="noopener">Doichain Explorer<small>Blöcke, Transaktionen und Namen zum Nachschlagen</small></a>
+        <a class="link" href="https://github.com/Doichain/doichain-core" target="_blank" rel="noopener">Doichain Core<small>Referenzclient v31.1.6 mit Releases und Issues</small></a>
+        <a class="link" href="/poe/">Verifile<small>Die Nachweis-App auf Basis dieser API</small></a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Doichain API, betrieben von der DOI Labs AG auf einer eigenen Doichain-Node. Keine Cookies, kein Tracking.</p>
+    <p><a href="https://doi-labs.li/" target="_blank" rel="noopener">DOI Labs</a> · <a href="https://doichain.org" target="_blank" rel="noopener">Doichain</a> · <a href="https://doi-labs.li/impressum" target="_blank" rel="noopener">Impressum</a></p>
+  </footer>
+
+  <script>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+      function highlight(json) {
+        return esc(json).replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (m) => {
+          let cls = "n";
+          if (/^"/.test(m)) cls = /:$/.test(m) ? "k" : "s";
+          else if (/true|false|null/.test(m)) cls = "b";
+          return '<span class="' + cls + '">' + m + "</span>";
+        });
+      }
+      // Status oben
+      fetch("/v1/status").then((r) => r.json()).then((d) => {
+        const ok = d.chain && !d.chain.initial_block_download && d.chain.fork_check && d.chain.fork_check.ok;
+        $("dot").className = "dot " + (ok ? "ok" : "bad");
+        $("statusText").textContent = "Node " + d.node.subversion.replace(/\//g, "") + " · Block " + d.chain.blocks.toLocaleString("de-DE") + " · letzter Block " + d.chain.best_block_time_iso.replace("T", " ").replace("Z", " UTC") + " · " + d.node.connections + " Peers";
+      }).catch(() => { $("dot").className = "dot bad"; $("statusText").textContent = "Node nicht erreichbar"; });
+
+      // Spielwiese
+      const PLAYS = {
+        status: { path: () => "/v1/status" },
+        blocks: { path: () => "/v1/blocks?count=5" },
+        name: { input: { ph: "Name, zum Beispiel Ottmar", val: "Ottmar" }, path: (v) => "/v1/name/" + encodeURIComponent(v).replace(/%2F/g, "/") },
+        poe: { input: { ph: "SHA-256, 64 Hex-Zeichen", val: "" }, path: (v) => "/v1/poe/" + v.trim().toLowerCase() },
+        address: { input: { ph: "Doichain-Adresse", val: "NCQ28kfwr6Lq5rsivKxZ2UW6sZq9isQZLd" }, path: (v) => "/v1/address/" + v.trim() },
+        fee: { path: () => "/v1/fee" },
+      };
+      let current = "status";
+      function renderRow() {
+        const p = PLAYS[current]; const row = $("playRow"); row.innerHTML = "";
+        if (p.input) {
+          const inp = document.createElement("input"); inp.placeholder = p.input.ph; inp.value = p.input.val; inp.id = "playIn"; inp.spellcheck = false;
+          inp.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+          row.appendChild(inp);
+        }
+        const btn = document.createElement("button"); btn.className = "btn primary"; btn.textContent = "Abfragen"; btn.addEventListener("click", run); row.appendChild(btn);
+      }
+      async function run() {
+        const p = PLAYS[current]; const v = p.input ? $("playIn").value : "";
+        if (p.input && !v.trim()) { $("playOut").textContent = "Bitte einen Wert eingeben."; return; }
+        const path = p.path(v);
+        $("playUrl").innerHTML = "<b>GET</b> " + esc(location.origin + path);
+        $("playOut").textContent = "…"; $("playMeta").textContent = "";
+        const t0 = performance.now();
+        try {
+          const r = await fetch(path); const txt = await r.text();
+          let body = txt; try { body = JSON.stringify(JSON.parse(txt), null, 2); } catch (e) {}
+          $("playOut").innerHTML = highlight(body);
+          $("playMeta").textContent = "HTTP " + r.status + " · " + Math.round(performance.now() - t0) + " ms · " + txt.length.toLocaleString("de-DE") + " Zeichen";
+        } catch (e) { $("playOut").textContent = "Fehler: " + e.message; }
+      }
+      $("playTabs").addEventListener("click", (e) => {
+        const b = e.target.closest(".tab"); if (!b) return;
+        document.querySelectorAll("#playTabs .tab").forEach((x) => x.classList.toggle("on", x === b));
+        current = b.dataset.p; renderRow(); if (!PLAYS[current].input || PLAYS[current].input.val) run(); else { $("playOut").textContent = "…"; $("playUrl").textContent = ""; }
+      });
+      renderRow(); run();
+
+      // Codebeispiele
+      const base = location.origin;
+      const CODE = {
+        curl: `# Status der Node
+curl ${base}/v1/status
+
+# Nachweis pruefen
+curl ${base}/v1/poe/$(sha256sum vertrag.pdf | cut -d' ' -f1)
+
+# Nachweis anlegen (write-Schluessel)
+curl -X POST ${base}/v1/poe -H "X-API-Key: $KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"hash":"<sha256>","filename":"vertrag.pdf"}'
+
+# Namen registrieren
+curl -X POST ${base}/v1/name/doi -H "X-API-Key: $KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"name":"id/meinname","value":"hallo doichain"}'`,
+        py: `import hashlib, requests
+
+API = "${base}/v1"
+KEY = "<write-schluessel>"
+
+h = hashlib.sha256(open("vertrag.pdf", "rb").read()).hexdigest()
+
+# pruefen
+print(requests.get(f"{API}/poe/{h}").json()["status"])
+
+# anlegen
+r = requests.post(f"{API}/poe", json={"hash": h, "filename": "vertrag.pdf"},
+                  headers={"X-API-Key": KEY})
+print(r.status_code, r.json().get("txid"))`,
+        js: `const API = "${base}/v1";
+
+// Hash im Browser berechnen, die Datei bleibt beim Nutzer
+const buf = await file.arrayBuffer();
+const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))]
+  .map(b => b.toString(16).padStart(2, "0")).join("");
+
+// pruefen
+const proof = await fetch(\`\${API}/poe/\${hash}\`).then(r => r.json());
+console.log(proof.status, proof.block_time_iso);
+
+// anlegen (Schluessel nur serverseitig oder als poe-Schluessel mit Kontingent)
+await fetch(\`\${API}/poe\`, { method: "POST",
+  headers: { "content-type": "application/json", "X-API-Key": KEY },
+  body: JSON.stringify({ hash, filename: file.name }) });`,
+      };
+      function showCode(k) { $("codeOut").textContent = CODE[k]; document.querySelectorAll("#codeTabs .tab").forEach((x) => x.classList.toggle("on", x.dataset.c === k)); }
+      $("codeTabs").addEventListener("click", (e) => { const b = e.target.closest(".tab"); if (b) showCode(b.dataset.c); });
+      showCode("curl");
+    })();
+  </script>
+</body>
+</html>

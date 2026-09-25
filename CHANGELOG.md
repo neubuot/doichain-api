@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.3.0 (2026-09-26)
+
+Web-Oberflächen und öffentlicher Nachweis-Schlüssel.
+
+- Neue Schlüsselstufe **poe** (`DOI_API_KEYS_POE`): darf nur Nachweise anlegen (`POST /v1/poe`, `POST /v1/poe/file`), mit Tageskontingent je IP-Adresse (`DOI_POE_PUBLIC_PER_IP_DAY`, Standard 10) und insgesamt (`DOI_POE_PUBLIC_PER_DAY`, Standard 200). Zähler in `/var/lib/doichain-api/quota.db` (systemd `StateDirectory`), Abfrage über `GET /v1/poe/quota`. write- und admin-Schlüssel bleiben ohne Kontingent.
+- **Verifile** (`web/verifile`): PoE-Web-App. Datei per Drag-and-drop, SHA-256 im Browser (hash-wasm, gestückelt, beliebige Dateigröße, Rückfall auf Web Crypto), kein Upload, Status-Abfrage, Verankerung mit poe-Schlüssel, automatische Aktualisierung bis zur Bestätigung, Nachweis als JSON und Druckansicht, Prüfung per Hash-Eingabe oder `#<hash>` in der Adresse, Deutsch und Englisch. Konfiguration `config.js` wird vom Installer aus der Umgebungsdatei erzeugt.
+- **Landingpage der API** (`web/api-site`): Erklärung, Live-Status, Spielwiese mit lesenden Aufrufen, Codebeispiele für curl, Python und JavaScript, Zugriffsstufen, Entwickler-Links. Ausgeliefert unter `/` des API-Hosts, die Verifile-App zusätzlich unter `/poe/`.
+- nginx-Vorlage `deploy/nginx-verifile.conf` für verifile.app und verifile.it (Port 80 mit ACME-Pfad, Content-Security-Policy, certbot ergänzt 443).
+- Erste echte Nachweise auf der Produktivinstanz (README.md und CHANGELOG.md dieses Repos, 26.09.2026).
+
 ## 1.2.0 (2026-09-25)
 
 Zweite unabhängige Prüfrunde (27 bestätigte Befunde) eingearbeitet.
