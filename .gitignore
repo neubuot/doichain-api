@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Lokale Umgebung und Geheimnisse
+.env
+*.env
+!deploy/doichain-api.env.example
+
+# Editor und Betriebssystem
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
