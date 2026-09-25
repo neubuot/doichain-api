@@ -11,6 +11,7 @@ Web-Oberflächen und öffentlicher Nachweis-Schlüssel.
 - **Landingpage der API** (`web/api-site`): Erklärung, Live-Status, Spielwiese mit lesenden Aufrufen, Codebeispiele für curl, Python und JavaScript, Zugriffsstufen, Entwickler-Links. Ausgeliefert unter `/` des API-Hosts, die Verifile-App zusätzlich unter `/poe/`.
 - nginx-Vorlage `deploy/nginx-verifile.conf` für verifile.app und verifile.it (Port 80 mit ACME-Pfad, Content-Security-Policy, certbot ergänzt 443).
 - Erste echte Nachweise auf der Produktivinstanz (README.md und CHANGELOG.md dieses Repos, 26.09.2026).
+- Verifile seit 26.09.2026 unter https://verifile.it/ (A-Records im 1blu-KSB, Let's Encrypt per certbot, HSTS, www leitet auf den Hauptnamen).
 
 ## 1.2.0 (2026-09-25)
 

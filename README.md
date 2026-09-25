@@ -19,7 +19,7 @@ Zwei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausge
 - **Verifile** (`web/verifile`): Proof of Existence für Endnutzer. Datei ins Feld ziehen, SHA-256 entsteht im Browser
   (kein Upload), ein Klick verankert den Hash in der Doichain, die Seite zeigt Blockzeit und Bestätigungen und liefert
   den Nachweis als JSON oder Druckansicht. Nutzt den eingeschränkten **poe**-Schlüssel mit Tageskontingent.
-  Vorgesehen für `verifile.app` beziehungsweise `verifile.it` (`deploy/nginx-verifile.conf`).
+  Live unter **https://verifile.it/** (Let's Encrypt, `deploy/nginx-verifile.conf`), zusätzlich unter `/poe/` des API-Hosts.
 - **Landingpage der API** (`web/api-site`): Erklärung, Live-Status der Node, Spielwiese für lesende Aufrufe,
   Codebeispiele und Links, ausgeliefert unter `/` des API-Hosts.
 

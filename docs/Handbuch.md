@@ -1,6 +1,6 @@
 # Doichain-API – Handbuch
 
-> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 26.09.2026, API-Version 1.3.0). Verweise auf interne Vault-Notizen sind als Klartext belassen.
+> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 26.09.2026, API-Version 1.3.0, Verifile unter verifile.it). Verweise auf interne Vault-Notizen sind als Klartext belassen.
 
 
 # Doichain-API – Handbuch
@@ -22,7 +22,7 @@ Die Doichain-API ist eine Web-Schnittstelle vor der eigenen Doichain-Node auf de
 | | |
 |---|---|
 | Landingpage | **https://doi-api.sendlabs.de/** mit Erklärung, Live-Status, Spielwiese für lesende Aufrufe und Codebeispielen (Quelle `web/api-site` im Repo) |
-| Verifile (PoE-App) | **https://doi-api.sendlabs.de/poe/**, später verifile.app oder verifile.it (Abschnitt 4) |
+| Verifile (PoE-App) | **https://verifile.it/** (seit 26.09.2026, Let's Encrypt), zusätzlich unter https://doi-api.sendlabs.de/poe/ (Abschnitt 4) |
 | Interaktive Doku (Swagger) | **https://doi-api.sendlabs.de/docs** (alternativ `/redoc`), später zusätzlich https://api.doi.zone/docs |
 | Basis-Adresse | `https://doi-api.sendlabs.de/v1/` |
 | Maschinenlesbare Beschreibung | `https://doi-api.sendlabs.de/openapi.json` |
@@ -134,7 +134,7 @@ Regeln der Kette, die man kennen sollte:
 
 ### Verifile, die Web-App
 
-Für Endnutzer gibt es die App **Verifile** unter https://doi-api.sendlabs.de/poe/ (später auf einer eigenen Domain, verifile.app oder verifile.it): Datei ins Feld ziehen, der Browser berechnet den SHA-256 (gestückelt über die Bibliothek hash-wasm, damit auch Gigabyte-Dateien gehen, Rückfall auf Web Crypto), nichts wird hochgeladen. Die App fragt den Status ab, verankert auf Klick über den poe-Schlüssel, aktualisiert sich alle 30 Sekunden bis zur Bestätigung und liefert den Nachweis als JSON-Datei oder Druckansicht. Ein bekannter Hash lässt sich direkt eingeben oder als `#<hash>` an die Adresse hängen, so werden Nachweise verlinkbar. Sprache Deutsch und Englisch (Schalter oben rechts, Wahl bleibt im Browser gespeichert). Quellcode im Repo unter `web/verifile`, Konfiguration `config.js` erzeugt der Installer aus der Umgebungsdatei. Solange die App unter dem API-Host läuft, gelten die dortigen Sicherheits-Header, auf der eigenen Domain die Vorlage `deploy/nginx-verifile.conf` mit Content-Security-Policy.
+Für Endnutzer gibt es die App **Verifile** unter **https://verifile.it/** (eigener nginx-vHost mit Let's Encrypt seit 26.09.2026, `www` leitet auf den Hauptnamen, zusätzlich erreichbar unter https://doi-api.sendlabs.de/poe/): Datei ins Feld ziehen, der Browser berechnet den SHA-256 (gestückelt über die Bibliothek hash-wasm, damit auch Gigabyte-Dateien gehen, Rückfall auf Web Crypto), nichts wird hochgeladen. Die App fragt den Status ab, verankert auf Klick über den poe-Schlüssel, aktualisiert sich alle 30 Sekunden bis zur Bestätigung und liefert den Nachweis als JSON-Datei oder Druckansicht. Ein bekannter Hash lässt sich direkt eingeben oder als `#<hash>` an die Adresse hängen, so werden Nachweise verlinkbar. Sprache Deutsch und Englisch (Schalter oben rechts, Wahl bleibt im Browser gespeichert). Quellcode im Repo unter `web/verifile`, Konfiguration `config.js` erzeugt der Installer aus der Umgebungsdatei. Solange die App unter dem API-Host läuft, gelten die dortigen Sicherheits-Header, auf der eigenen Domain die Vorlage `deploy/nginx-verifile.conf` mit Content-Security-Policy.
 
 ### Antwort beim Prüfen
 
@@ -325,7 +325,7 @@ Einstellungen in der Umgebungsdatei:
    (bei beiden Namen zusätzlich `-d doi-api.sendlabs.de`). certbot trägt das Zertifikat in den nginx-Block ein und verlängert es automatisch. Danach entfällt `--cacert`, und in `/etc/nginx/sites-available/doichain-api` kann `add_header Strict-Transport-Security "max-age=31536000" always;` ergänzt werden. `api.doi.zone` und `doi-api.sendlabs.de` sind dort bereits als `server_name` eingetragen und im Übergangszertifikat enthalten, ein anderer Name muss an beiden Stellen ergänzt werden. Spätere API-Updates lassen die von certbot bearbeitete nginx-Datei in Ruhe (Abschnitt 11).
 2. **Wallet füllen.** Erledigt am 25.09.2026 (50 DOI an `NGTRDaWzP5o4wky4Uyx2CM5gDQo3Qw3MMn`). Nachfüllen, wenn `GET /v1/wallet` unter etwa 5 DOI meldet, jeder Nachweis kostet rund 0,0105 DOI.
 3. **Erster Nachweis.** Erledigt am 26.09.2026 (README.md und CHANGELOG.md des Repos per API, ein Testnachweis über die Verifile-App). Noch offen: einmal `POST /v1/wallet/send` mit einem Kleinstbetrag an eine eigene Adresse, damit auch die Auszahlung einmal geprüft ist.
-4. **Verifile-Domain.** `verifile.app` oder `verifile.it` als A-Record (plus `www`) auf 136.243.155.62 setzen, dann auf dem Server `certbot --nginx -d verifile.app -d www.verifile.app --redirect -m ottmar.neuburger@webanizer.de --agree-tos -n`. Der nginx-vHost wartet schon auf Port 80. Danach in `config.js` nichts zu ändern, die App spricht weiter mit https://doi-api.sendlabs.de.
+4. **Verifile-Domain.** Erledigt am 26.09.2026: `verifile.it` und `www.verifile.it` zeigen auf 136.243.155.62, Zertifikat per certbot (Erneuerung automatisch), HSTS, www leitet auf verifile.it. Der Installer lässt die certbot-verwaltete nginx-Datei `/etc/nginx/sites-available/verifile` in Ruhe.
 5. **Impressum und Datenschutz** für Verifile und Landingpage (derzeit Link auf https://doi-labs.li/impressum, Zieladresse prüfen).
 6. **David informieren** (Gmail-Entwurf „doi-btc-node: Node auf v31.1.6 und neue REST-API" liegt bereit).
 7. Optional: `DOI_PUBLIC_READ=false` setzen und Leseschlüssel vergeben, wenn die API nicht öffentlich lesbar sein soll.
