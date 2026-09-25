@@ -10,8 +10,8 @@ Dokumentation (Swagger) unter `/docs`.
 as a documented REST API with API-key tiers, nginx TLS termination and rate limiting. The manual
 (`docs/Handbuch.md`) is in German.*
 
-Produktivinstanz: Hetzner-Server `doi-btc-node`, https://136.243.155.62/docs (später `api.doi.zone`).
-Betreiber: DOI Labs AG. Stand: Version 1.2.0, 25.09.2026.
+Produktivinstanz: Hetzner-Server `doi-btc-node`, **https://doi-api.sendlabs.de/docs** (Let's Encrypt, später
+zusätzlich `api.doi.zone`). Betreiber: DOI Labs AG. Stand: Version 1.2.0, 25.09.2026.
 
 ## Inhalt
 
@@ -154,22 +154,19 @@ Schlüssel per Header `X-API-Key: <schlüssel>` oder `Authorization: Bearer <sch
 ## Erste Aufrufe
 
 ```bash
-# Zertifikat der Übergangsphase (selbstsigniert) einmal holen, statt die Prüfung abzuschalten
-scp root@136.243.155.62:/etc/ssl/doichain-api/selfsigned.crt ./doichain-api.crt
-
 # Status der Node
-curl --cacert doichain-api.crt https://136.243.155.62/v1/status
+curl https://doi-api.sendlabs.de/v1/status
 
 # Nachweis prüfen
-curl --cacert doichain-api.crt https://136.243.155.62/v1/poe/$(sha256sum vertrag.pdf | cut -d' ' -f1)
+curl https://doi-api.sendlabs.de/v1/poe/$(sha256sum vertrag.pdf | cut -d' ' -f1)
 
 # Nachweis anlegen (write-Schlüssel, Wallet braucht Guthaben)
-curl --cacert doichain-api.crt -X POST https://136.243.155.62/v1/poe/file \
+curl -X POST https://doi-api.sendlabs.de/v1/poe/file \
   -H "X-API-Key: <write-schluessel>" -F "file=@vertrag.pdf" -F "note=Mietvertrag"
 
 # Namen lesen und registrieren
-curl --cacert doichain-api.crt https://136.243.155.62/v1/name/Ottmar
-curl --cacert doichain-api.crt -X POST https://136.243.155.62/v1/name/doi \
+curl https://doi-api.sendlabs.de/v1/name/Ottmar
+curl -X POST https://doi-api.sendlabs.de/v1/name/doi \
   -H "X-API-Key: <write-schluessel>" -H "content-type: application/json" \
   -d '{"name":"id/doi-labs","value":"{\"web\":\"https://doi-labs.li\"}"}'
 ```
@@ -178,10 +175,13 @@ Python:
 
 ```python
 import hashlib, requests
-API, CERT = "https://136.243.155.62/v1", "doichain-api.crt"
+API = "https://doi-api.sendlabs.de/v1"
 h = hashlib.sha256(open("vertrag.pdf", "rb").read()).hexdigest()
-print(requests.get(f"{API}/poe/{h}", verify=CERT).json()["status"])  # unknown, pending, confirmed, expired
+print(requests.get(f"{API}/poe/{h}").json()["status"])  # unknown, pending, confirmed, expired
 ```
+
+Bei einer Neuinstallation ohne Hostnamen liefert nginx zunächst ein selbstsigniertes Zertifikat (der Installer
+erzeugt es), dann mit `--cacert` arbeiten und nie die Prüfung abschalten.
 
 ## Proof of Existence
 

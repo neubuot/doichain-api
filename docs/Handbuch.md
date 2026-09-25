@@ -1,6 +1,6 @@
 # Doichain-API – Handbuch
 
-> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 25.09.2026, API-Version 1.2.0). Verweise auf interne Vault-Notizen sind als Klartext belassen.
+> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 25.09.2026 abends, API-Version 1.2.0, Hostname doi-api.sendlabs.de). Verweise auf interne Vault-Notizen sind als Klartext belassen.
 
 
 # Doichain-API – Handbuch
@@ -21,11 +21,11 @@ Die Doichain-API ist eine Web-Schnittstelle vor der eigenen Doichain-Node auf de
 
 | | |
 |---|---|
-| Interaktive Doku (Swagger) | **https://136.243.155.62/docs** (alternativ `/redoc`), später https://api.doi.zone/docs |
-| Basis-Adresse | `https://136.243.155.62/v1/` |
-| Maschinenlesbare Beschreibung | `https://136.243.155.62/openapi.json` |
-| Gesundheitscheck | `https://136.243.155.62/health` |
-| Zertifikat | bis zur DNS-Umstellung **selbstsigniert**, gültig bis 24.09.2028, ausgestellt für die IP-Adresse sowie `api.doi.zone` und `doi-api.sendlabs.de`, SHA-256-Fingerprint `D0:20:23:C8:6A:E2:6D:FC:50:C3:89:0E:81:CE:84:64:6F:50:2F:34:37:71:81:F1:53:DD:8A:5E:0D:7A:36:E5`. Kopie im Vault: `docs/doichain-api-selfsigned.crt` in diesem Repo. Damit lässt sich die Verbindung sauber prüfen (Abschnitt 2), statt die Prüfung abzuschalten. Wer keinen SSH-Zugang hat, bekommt die Datei aus dem Vault |
+| Interaktive Doku (Swagger) | **https://doi-api.sendlabs.de/docs** (alternativ `/redoc`), später zusätzlich https://api.doi.zone/docs |
+| Basis-Adresse | `https://doi-api.sendlabs.de/v1/` |
+| Maschinenlesbare Beschreibung | `https://doi-api.sendlabs.de/openapi.json` |
+| Gesundheitscheck | `https://doi-api.sendlabs.de/health` |
+| Zertifikat | **Let's Encrypt** für `doi-api.sendlabs.de` seit 25.09.2026 (certbot, automatische Erneuerung, HSTS aktiv). Kein `--cacert` und kein `-k` mehr nötig. Der Aufruf über die nackte IP-Adresse 136.243.155.62 funktioniert weiter, zeigt dann aber eine Zertifikatswarnung, weil das Zertifikat auf den Hostnamen lautet. Das frühere selbstsignierte Zertifikat (`docs/doichain-api-selfsigned.crt` in diesem Repo) wird nicht mehr ausgeliefert |
 | Kette | Doichain Mainnet nach dem Sicherheits-Fork vom 11.09.2026, Node Doichain Core v31.1.6 |
 | Explorer für Links | https://doi-explorer.le-space.de. Einzelabfragen zu Block, Transaktion, Adresse, Name und Nachweis enthalten fertige Explorer-Links |
 
@@ -33,16 +33,10 @@ Unter `/docs` lässt sich jeder Aufruf im Browser ausprobieren („Try it out").
 
 ## 2. Schnellstart in fünf Minuten
 
-Zertifikat einmal holen, damit curl und Python die Verbindung prüfen können (im Browser reicht es, die Warnung einmal zu bestätigen):
-
-```bash
-scp root@136.243.155.62:/etc/ssl/doichain-api/selfsigned.crt ./doichain-api.crt
-```
-
 Status der Node lesen (kein Schlüssel nötig):
 
 ```bash
-curl --cacert doichain-api.crt https://136.243.155.62/v1/status
+curl https://doi-api.sendlabs.de/v1/status
 ```
 
 Antwort (gekürzt): Blockhöhe, Zeit des letzten Blocks, ob die Fork-Prüfung stimmt (`fork_check.ok`), Mempool, ElectrumX und ob das Wallet Guthaben hat.
@@ -51,13 +45,13 @@ Einen Nachweis prüfen (Hash einer Datei berechnen und nachschlagen):
 
 ```bash
 sha256sum vertrag.pdf
-curl --cacert doichain-api.crt https://136.243.155.62/v1/poe/<hash>
+curl https://doi-api.sendlabs.de/v1/poe/<hash>
 ```
 
 Einen Nachweis anlegen (braucht den write-Schlüssel und Guthaben im Wallet, Abschnitt 4):
 
 ```bash
-curl --cacert doichain-api.crt -X POST https://136.243.155.62/v1/poe/file \
+curl -X POST https://doi-api.sendlabs.de/v1/poe/file \
   -H "X-API-Key: <write-schluessel>" \
   -F "file=@vertrag.pdf" -F "note=Mietvertrag Schulgasse 5"
 ```
@@ -65,21 +59,20 @@ curl --cacert doichain-api.crt -X POST https://136.243.155.62/v1/poe/file \
 Einen aktiven Namen lesen (`Ottmar` ist seit Block 432.344 registriert, `Lisa` ist ein abgelaufener Beispielname):
 
 ```bash
-curl --cacert doichain-api.crt https://136.243.155.62/v1/name/Ottmar
+curl https://doi-api.sendlabs.de/v1/name/Ottmar
 ```
 
 Python-Beispiel (nur `requests` nötig):
 
 ```python
 import requests
-api = "https://136.243.155.62/v1"
-cert = "doichain-api.crt"          # nach der DNS-Umstellung: verify=True
-print(requests.get(f"{api}/status", verify=cert).json()["chain"]["blocks"])
-r = requests.get(f"{api}/poe/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", verify=cert)
+api = "https://doi-api.sendlabs.de/v1"
+print(requests.get(f"{api}/status").json()["chain"]["blocks"])
+r = requests.get(f"{api}/poe/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
 print(r.json()["status"])   # unknown, pending, confirmed oder expired
 ```
 
-Bis das echte Zertifikat da ist, keine Schlüssel an Dritte geben. Wer die Zertifikatsprüfung mit `-k` abschaltet, würde den Schlüssel auch an einen Angreifer im Netzwerkpfad schicken.
+Die Zertifikatsprüfung nie mit `-k` oder `verify=False` abschalten, sonst ginge der Schlüssel auch an einen Angreifer im Netzwerkpfad.
 
 ## 3. Zugriffsstufen und Schlüssel
 
@@ -164,12 +157,12 @@ HTTP 201 mit `txid`, `name`, `value`, `fee`, `status: pending` und dem Explorer-
 
 ```python
 import hashlib, requests
-API, KEY, CERT = "https://136.243.155.62/v1", "<write-schluessel>", "doichain-api.crt"
+API, KEY = "https://doi-api.sendlabs.de/v1", "<write-schluessel>"
 h = hashlib.sha256(open("vertrag.pdf", "rb").read()).hexdigest()
-r = requests.post(f"{API}/poe", json={"hash": h, "filename": "vertrag.pdf"}, headers={"X-API-Key": KEY}, verify=CERT)
+r = requests.post(f"{API}/poe", json={"hash": h, "filename": "vertrag.pdf"}, headers={"X-API-Key": KEY})
 print(r.status_code, r.json())          # 201 und txid, 409 wenn schon vorhanden, 402 wenn das Wallet leer ist
 # später
-print(requests.get(f"{API}/poe/{h}", verify=CERT).json()["block_time_iso"])
+print(requests.get(f"{API}/poe/{h}").json()["block_time_iso"])
 ```
 
 ## 5. Namen und `name_doi`
@@ -195,7 +188,7 @@ Namen mit Schrägstrich funktionieren direkt im Pfad: `GET /v1/name/poe/9f86d0�
 Beispiel:
 
 ```bash
-curl --cacert doichain-api.crt -X POST https://136.243.155.62/v1/name/doi -H "X-API-Key: <write>" \
+curl -X POST https://doi-api.sendlabs.de/v1/name/doi -H "X-API-Key: <write>" \
   -H "content-type: application/json" \
   -d '{"name":"id/doi-labs","value":"{\"web\":\"https://doi-labs.li\"}"}'
 ```
@@ -290,7 +283,8 @@ Alle Fehler haben dieselbe Form, auch die, die nginx selbst erzeugt (413, 429, 5
 | nginx | `/etc/nginx/sites-available/doichain-api`, Logs `/var/log/nginx/doichain-api.access.log` und `.error.log`, prüfen mit `nginx -t`, neu laden mit `systemctl reload nginx` |
 | Node | `systemctl status doichaind`, Befehle `doichain-cli -datadir=/home/doichain/.doichain <befehl>`, Log `/home/doichain/.doichain/debug.log`, Konfiguration `doichain.conf` daneben |
 | ElectrumX | `systemctl status electrumx`, Konfiguration `/etc/electrumx.conf`, Port 50001 lokal |
-| Update der API | neuen Quellcode nach `/root/doichain-api-src` laden (Original im Claude-Scratchpad), dann `bash /root/doichain-api-src/deploy/install.sh`. Das Skript legt auf einem frischen Server auch Benutzer, venv, Zertifikat, Umgebungsdatei und Einzahlungsadresse an. Sobald certbot die nginx-Datei angefasst hat, lässt das Skript sie unverändert und weist darauf hin, damit das echte Zertifikat nicht überschrieben wird. **Jede Codeänderung ist erst nach diesem Schritt aktiv** |
+| Quellcode | GitHub-Repo **https://github.com/neubuot/doichain-api** (privat, seit 25.09.2026), lokaler Klon `C:\Users\ottma\doichain-api`. Dort liegen auch `CHANGELOG.md`, die Vorlage der Umgebungsdatei und eine Kopie dieses Handbuchs |
+| Update der API | im lokalen Klon `bash deploy/push-to-server.sh` (kopiert das Arbeitsverzeichnis nach `/root/doichain-api-src` und führt dort `deploy/install.sh` aus), alternativ auf dem Server den Quellcode nach `/root/doichain-api-src` laden und `bash /root/doichain-api-src/deploy/install.sh` starten. Das Skript legt auf einem frischen Server auch Benutzer, venv, Zertifikat, Umgebungsdatei und Einzahlungsadresse an. Sobald certbot die nginx-Datei angefasst hat, lässt das Skript sie unverändert und weist darauf hin, damit das echte Zertifikat nicht überschrieben wird. **Jede Codeänderung ist erst nach diesem Schritt aktiv** |
 | Überwachung | Uptime Kuma Monitor 82 „Doichain API (doi-btc-node)" prüft `/health` auf `"ok":true`. `/health` liefert 503, wenn die Node noch synchronisiert, mehr als 6 Header vorausliegen, der letzte Block älter als drei Stunden ist oder die Fork-Prüfung scheitert. NOC-Eintrag „Doichain API", Checkmk-Host doi-btc-node (nur Ping) |
 | Firewall | ufw: 22, 80, 443, 8333 (Bitcoin), 8338 (Doichain). Alles andere nur lokal |
 
