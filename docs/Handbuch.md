@@ -314,6 +314,8 @@ Einstellungen in der Umgebungsdatei:
 
 **Wenn etwas hakt:** `/health` liefert 503 mit `problems` → dort steht der Grund. Keine Antwort → `systemctl status doichain-api` und `journalctl -u doichain-api -n 50`. `/v1/status` meldet `initial_block_download: true` oder eine alte Blockhöhe → Node prüfen (`getblockchaininfo`, `getpeerinfo`, `debug.log`). `electrumx.reachable: false` → `systemctl status electrumx`. Adressabfragen liefern 503, obwohl die Node läuft → ElectrumX hängt hinter der Node, kurz warten oder Dienst neu starten. Eine Wallet-Transaktion hängt unbestätigt fest → `POST /v1/wallet/abandon`.
 
+**Browser zeigt „Nicht sicher" trotz gültigem Zertifikat.** Wer bei einem früheren Zertifikatsfehler dieses Hosts (etwa dem selbstsignierten Übergangszertifikat vom 25.09.2026) auf „trotzdem fortfahren" geklickt hat, sieht in Chrome danach für die gesamte Laufzeit des Browserprozesses ein rotes „Nicht sicher", obwohl der Zertifikatsdialog „gültig" meldet. Chrome merkt sich je Hostname im Arbeitsspeicher, dass Skripte mit umgangenem Zertifikatsfehler liefen. Tab schließen, neues Fenster oder Browserdaten löschen helfen nicht, `chrome://restart` in der Adressleiste behebt es. Gegenprobe: im Inkognito-Fenster ist die Seite sofort „sicher".
+
 ## 12. Nächste Schritte
 
 1. **Hostname und echtes Zertifikat.** Sobald ein Name auf 136.243.155.62 zeigt (Empfehlung `api.doi.zone`, bis dahin `doi-api.sendlabs.de` als A-Record im 1blu-KSB), auf dem Server ausführen:
