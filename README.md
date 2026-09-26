@@ -12,9 +12,14 @@ as a documented REST API with API-key tiers, nginx TLS termination and rate limi
 
 Produktivinstanz: Hetzner-Server `doi-btc-node`, **https://doi-api.sendlabs.de/** (Landingpage mit Spielwiese,
 `/docs` Swagger, `/poe/` die Nachweis-App Verifile), Let's Encrypt, später zusätzlich `api.doi.zone`.
-Betreiber: DOI Labs AG. Stand: Version 1.3.0, 26.09.2026.
+Betreiber: DOI Labs AG. Stand: Version 1.4.0, 26.09.2026.
 
-Zwei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausgeliefert:
+**Neu in 1.4.0: MCP-Server für KI-Agenten** unter **https://doi-api.sendlabs.de/mcp**. Claude, ChatGPT, Cursor,
+VS Code und jeder andere MCP-Client binden die Doichain mit dieser einen Adresse ein (Streamable HTTP, ohne Anmeldung)
+und können Nachweise verankern und prüfen, Namen, Blöcke, Transaktionen und Adressen lesen. Im Browser zeigt dieselbe
+Adresse die Landingpage mit Einbau-Anleitung.
+
+Drei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausgeliefert:
 
 - **Verifile** (`web/verifile`): Proof of Existence für Endnutzer. Datei ins Feld ziehen, SHA-256 entsteht im Browser
   (kein Upload), ein Klick verankert den Hash in der Doichain, die Seite zeigt Blockzeit und Bestätigungen und liefert
@@ -22,6 +27,8 @@ Zwei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausge
   Live unter **https://verifile.it/** (Let's Encrypt, `deploy/nginx-verifile.conf`), zusätzlich unter `/poe/` des API-Hosts.
 - **Landingpage der API** (`web/api-site`): Erklärung, Live-Status der Node, Spielwiese für lesende Aufrufe,
   Codebeispiele und Links, ausgeliefert unter `/` des API-Hosts.
+- **Landingpage des MCP-Servers** (`web/mcp-site`): Einbau-Anleitung für Claude Code, Claude, ChatGPT, Cursor und VS Code,
+  Werkzeugliste, Sicherheit, FAQ, Deutsch und Englisch. nginx liefert sie aus, wenn ein Browser `/mcp` aufruft.
 
 ## Inhalt
 
@@ -33,6 +40,7 @@ Zwei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausge
 - [Zugriffsstufen](#zugriffsstufen)
 - [Erste Aufrufe](#erste-aufrufe)
 - [Proof of Existence](#proof-of-existence)
+- [MCP-Server für KI-Agenten](#mcp-server-für-ki-agenten)
 - [Betrieb](#betrieb)
 - [Lokale Entwicklung](#lokale-entwicklung)
 - [Projektstruktur](#projektstruktur)
@@ -58,11 +66,14 @@ tatsächlich in den Mempool übernommen hat, und verwerfen sie sonst im Wallet.
 ## Architektur
 
 ```
-Client (curl, Python, Browser, n8n, DocuSeal-Webhook)
-   │  HTTPS 443
-   ▼
-nginx  (TLS, Ratenbegrenzung 10/s je IP, Uploads 1/s, Body-Grenzen 64 KB / 1 MB / 52 MB, JSON-Fehlerseiten)
-   │  HTTP 127.0.0.1:8080
+Client (curl, Python, Browser, n8n, DocuSeal-Webhook)        KI-Agent (Claude, ChatGPT, Cursor …)
+   │  HTTPS 443                                                 │  HTTPS 443, POST /mcp
+   ▼                                                            ▼
+nginx  (TLS, Ratenbegrenzung 10/s je IP, MCP 5/s, Uploads 1/s, Body-Grenzen, JSON-Fehlerseiten)
+   │  HTTP 127.0.0.1:8080                  │  HTTP 127.0.0.1:8081
+   │                                       ▼
+   │                          doichain_mcp (Dienst doichain-mcp, Benutzer doimcp, 13 Werkzeuge)
+   │  ◄──────────── ruft nur die REST-API auf, X-Forwarded-For = Client-IP
    ▼
 uvicorn + FastAPI  (doichain_api, Dienst doichain-api, Benutzer doiapi, 2 Worker)
    │                          │
@@ -210,14 +221,47 @@ Verlängerung durch erneutes `name_doi` des Inhabers), nur der Inhaber kann eine
 ein Nachweis ist erst nach der ersten Bestätigung endgültig, je Name nur eine unbestätigte Operation.
 `GET /v1/poe/{hash}` liefert Blockhöhe, Blockzeit, Bestätigungen, Inhaber und Explorer-Link.
 
+## MCP-Server für KI-Agenten
+
+Der MCP-Server (`doichain_mcp/server.py`, MCP-SDK 2.x) macht die öffentlichen Funktionen der API als Werkzeuge
+für KI-Agenten nutzbar. Er läuft als eigener Dienst `doichain-mcp` (Benutzer `doimcp`, 127.0.0.1:8081) hinter
+nginx unter `/mcp`, zustandslos mit JSON-Antworten, und spricht ausschließlich mit der REST-API. Auf RPC, Wallet
+und die Schlüsseldatei der API hat er keinen Zugriff.
+
+Einbinden, zum Beispiel in Claude Code:
+
+```bash
+claude mcp add --transport http doichain https://doi-api.sendlabs.de/mcp
+```
+
+| Werkzeug | Zweck |
+|---|---|
+| `anchor_proof` | SHA-256 als `poe/<hash>` verankern (einziges schreibendes Werkzeug, bereits verankerte Hashes werden erkannt) |
+| `check_proof` | Status, Block, Zeit und Transaktion eines Nachweises |
+| `hash_text` | SHA-256 eines Textes (im Server berechnet, nichts wird gespeichert) |
+| `get_anchoring_quota` | verbleibendes Tageskontingent des Aufrufers |
+| `lookup_name`, `get_name_history`, `search_names` | Namen lesen, Historie, Suche nach Präfix |
+| `check_name_expiry` | bis zu 25 Namen: aktiv, läuft bald ab, abgelaufen, frei, mit geschätztem Datum (gemessener Blockabstand) |
+| `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message` | Kette, Adressen, signierte Nachrichten |
+
+Verankern nutzt den öffentlichen poe-Schlüssel (derselbe wie Verifile) mit dem Tageskontingent je Client-IP.
+nginx setzt `X-Real-IP`, der MCP-Server reicht die Adresse als `X-Forwarded-For` an die API weiter. Wer einen
+eigenen Schlüssel im Header `X-API-Key` oder `Authorization: Bearer` mitschickt, verankert damit (write-Schlüssel
+ohne Kontingent). Werte aus der Kette tragen in den Antworten die Endung `_untrusted`, damit Agenten sie als Daten
+und nicht als Anweisung behandeln. `GET /mcp` ohne `text/html` beantwortet nginx mit 405 (kein SSE-Strom im
+zustandslosen Betrieb), Browser bekommen die Landingpage. Gesundheitsprüfung: `GET /mcp/health`.
+Unterstützte Protokollversionen: 2024-11-05 bis 2026-07-28. `server.json` enthält den Eintrag für das
+offizielle MCP-Verzeichnis (registry.modelcontextprotocol.io), veröffentlicht wird er mit `mcp-publisher`.
+
 ## Betrieb
 
 | Was | Wie |
 |---|---|
 | Dienst | `systemctl status doichain-api`, `journalctl -u doichain-api -f`, Warnungen mit `-p warning` |
+| MCP-Server | `systemctl status doichain-mcp`, `journalctl -u doichain-mcp -f`, Umgebung `/etc/doichain-mcp/doichain-mcp.env` (vom Installer erzeugt) |
 | nginx | `/etc/nginx/sites-available/doichain-api`, Logs `/var/log/nginx/doichain-api.*.log` |
 | Update | Code nach `/root/doichain-api-src`, dann `bash deploy/install.sh` (oder `deploy/push-to-server.sh` vom Arbeitsplatz) |
-| Überwachung | `GET /health` liefert 200 nur bei gesunder, synchroner Kette, sonst 503 mit `problems` |
+| Überwachung | `GET /health` liefert 200 nur bei gesunder, synchroner Kette, sonst 503 mit `problems`, `GET /mcp/health` für den MCP-Server |
 | Gebühren | feste Rate 100 sat/vB (`fallbackfee=0.001`), Auszahlungen setzen `fee_rate` explizit |
 
 ## Lokale Entwicklung
@@ -242,19 +286,26 @@ doichain_api/
   auth.py        Schlüsselstufen als OpenAPI-Sicherheitsschema
   config.py      Einstellungen aus Umgebungsvariablen, Startprüfung der Schlüssel
   quota.py       Tageskontingent des poe-Schluessels (SQLite)
+doichain_mcp/
+  server.py      MCP-Server (13 Werkzeuge, Streamable HTTP, zustandslos), ruft nur die REST-API auf
 web/
   verifile/      PoE-Web-App (index.html, app.js, style.css, config.example.js)
   api-site/      Landingpage der API mit Spielwiese
+  mcp-site/      Landingpage des MCP-Servers (index.html, style.css, app.js, icon.svg)
 deploy/
   install.sh                 idempotenter Installer (Benutzer, venv, Zertifikat, env, systemd, nginx, Web-Oberflächen)
   push-to-server.sh          Arbeitsverzeichnis hochladen und Installer ausführen
   doichain-api.service       systemd-Unit (gehärtet, StateDirectory)
+  doichain-mcp.service       systemd-Unit des MCP-Servers (eigener Benutzer doimcp)
   nginx-doichain-api.conf    TLS, Ratenbegrenzung, Body-Grenzen, JSON-Fehlerseiten, Landingpage und /poe/
   nginx-verifile.conf        eigener vHost für verifile.app / verifile.it
   doichain-api.env.example   Vorlage der Umgebungsdatei
 docs/
   Handbuch.md                ausführliches Handbuch (deutsch)
   doichain-api-selfsigned.crt  Übergangszertifikat der Produktivinstanz
+requirements.txt             Abhängigkeiten der API
+requirements-mcp.txt         Abhängigkeiten des MCP-Servers (eigene venv)
+server.json                  Eintrag für das offizielle MCP-Verzeichnis
 CHANGELOG.md
 ```
 
@@ -265,6 +316,7 @@ CHANGELOG.md
 - Der RPC-Durchgriff sperrt Schlüsselmaterial, Wallet-Dateien, Dateizugriff und Node-Steuerung (Liste plus Präfixregel für künftige Core-Releases).
 - nginx: nur ECDHE-Verfahren, keine Versionsanzeige, keine Einbettung, Ratenbegrenzung, Body-Grenzen je Endpunkt.
 - systemd: `ProtectSystem=strict`, `ProtectHome`, `NoNewPrivileges`, eigener Benutzer ohne Login.
+- Der MCP-Server läuft als eigener Benutzer `doimcp` ohne Lesezugriff auf `/etc/doichain-api`, kennt nur den öffentlichen poe-Schlüssel und bietet keine Wallet-, Namensänderungs- oder RPC-Werkzeuge. Host- und Origin-Prüfung gegen DNS-Rebinding, eigene Ratenzone in nginx.
 - Zwei unabhängige Prüfrunden (Sicherheit, Korrektheit, Robustheit, Handbuch) mit 71 eingearbeiteten Befunden, siehe `CHANGELOG.md`.
 
 ## Dokumentation und Lizenz

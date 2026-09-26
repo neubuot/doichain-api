@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.4.0 (2026-09-26)
+
+MCP-Server für KI-Agenten.
+
+- **Doichain MCP-Server** (`doichain_mcp/server.py`, MCP-SDK 2.2): 13 Werkzeuge für Agenten, `anchor_proof`, `check_proof`, `hash_text`, `get_anchoring_quota`, `lookup_name`, `get_name_history`, `check_name_expiry`, `search_names`, `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message`. Streamable HTTP, zustandslos, JSON-Antworten, Protokolle 2024-11-05 bis 2026-07-28, Werkzeug-Annotationen (nur `anchor_proof` schreibt).
+- Eigener Dienst `doichain-mcp` (Benutzer `doimcp`, 127.0.0.1:8081, eigene venv) ohne Zugriff auf RPC, Wallet und die Schlüsseldatei der API. Ruft ausschließlich die REST-API auf und reicht die Client-IP aus `X-Real-IP` als `X-Forwarded-For` weiter, damit das Tageskontingent je Aufrufer gilt. Eigener Schlüssel optional per `X-API-Key` oder `Authorization: Bearer`.
+- Werte aus der Kette tragen die Endung `_untrusted` und einen Hinweis, damit Agenten sie nicht als Anweisung lesen. Bereits verankerte Hashes liefert `anchor_proof` als bestehenden Nachweis zurück, statt einen Fehler zu melden. Ablaufdaten schätzt `check_name_expiry` aus dem gemessenen Blockabstand der letzten 1000 Blöcke.
+- nginx: `/mcp` für MCP-Clients (eigene Ratenzone 5/s, 256 KB), Browser bekommen unter derselben Adresse die Landingpage, `GET` ohne HTML ergibt 405, `/mcp/` leitet mit 308 um, `/mcp/health` für die Überwachung. Host- und Origin-Prüfung im Server (DNS-Rebinding-Schutz).
+- **Landingpage des MCP-Servers** (`web/mcp-site`): Beispiele, Einbau-Anleitung für Claude Code, Claude, ChatGPT, Cursor, VS Code und andere Clients, Werkzeuge, Sicherheit, FAQ, Deutsch und Englisch, Live-Status, strenge Content-Security-Policy ohne Inline-Skripte.
+- `server.json` für das offizielle MCP-Verzeichnis, API-Landingpage verlinkt den MCP-Server, Installer richtet Benutzer, venv, Umgebungsdatei, Dienst und Seite ein.
+- Erster Nachweis über MCP am 26.09.2026 (Transaktion `a7af1851…`).
+
 ## 1.3.0 (2026-09-26)
 
 Web-Oberflächen und öffentlicher Nachweis-Schlüssel.

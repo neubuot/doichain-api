@@ -1,0 +1,4 @@
+# Abhaengigkeiten des MCP-Servers (eigene venv /opt/doichain-mcp/venv, getrennt von der API)
+mcp>=2.2,<3
+httpx>=0.27
+uvicorn[standard]>=0.30

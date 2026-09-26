@@ -1,13 +1,13 @@
 # Doichain-API – Handbuch
 
-> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 26.09.2026, API-Version 1.3.0, Verifile unter verifile.it). Verweise auf interne Vault-Notizen sind als Klartext belassen.
+> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 26.09.2026, Version 1.4.0 mit MCP-Server für KI-Agenten). Verweise auf interne Vault-Notizen sind als Klartext belassen.
 
 
 # Doichain-API – Handbuch
 
 ↩️ MOC – Doichain · Einrichtung: Einrichtungsbericht 2026-09-25 – Doichain-API auf doi-btc-node · Offene Punkte: Wiedervorlage 29.09.2026
 
-Stand: API-Version 1.3.0 vom 26.09.2026 (Version 1.2.0 nach zwei unabhängigen Prüfrunden mit 44 plus 27 eingearbeiteten Befunden, 1.3.0 ergänzt Verifile, Landingpage und den poe-Schlüssel).
+Stand: Version 1.4.0 vom 26.09.2026 (Version 1.2.0 nach zwei unabhängigen Prüfrunden mit 44 plus 27 eingearbeiteten Befunden, 1.3.0 ergänzt Verifile, Landingpage und den poe-Schlüssel, 1.4.0 den MCP-Server für KI-Agenten, Abschnitt 12).
 
 ## 1. Was die API ist
 
@@ -23,11 +23,12 @@ Die Doichain-API ist eine Web-Schnittstelle vor der eigenen Doichain-Node auf de
 |---|---|
 | Landingpage | **https://doi-api.sendlabs.de/** mit Erklärung, Live-Status, Spielwiese für lesende Aufrufe und Codebeispielen (Quelle `web/api-site` im Repo) |
 | Verifile (PoE-App) | **https://verifile.it/** (seit 26.09.2026, Let's Encrypt), zusätzlich unter https://doi-api.sendlabs.de/poe/ (Abschnitt 4) |
+| MCP-Server (KI-Agenten) | **https://doi-api.sendlabs.de/mcp** seit 26.09.2026. Claude, ChatGPT, Cursor und andere Agenten binden die Doichain mit dieser Adresse ein, im Browser zeigt sie die Landingpage mit Anleitung (Abschnitt 12) |
 | Interaktive Doku (Swagger) | **https://doi-api.sendlabs.de/docs** (alternativ `/redoc`), später zusätzlich https://api.doi.zone/docs |
 | Basis-Adresse | `https://doi-api.sendlabs.de/v1/` |
 | Maschinenlesbare Beschreibung | `https://doi-api.sendlabs.de/openapi.json` |
 | Gesundheitscheck | `https://doi-api.sendlabs.de/health` |
-| Zertifikat | **Let's Encrypt** für `doi-api.sendlabs.de` seit 25.09.2026 (certbot, automatische Erneuerung, HSTS aktiv). Kein `--cacert` und kein `-k` mehr nötig. Der Aufruf über die nackte IP-Adresse 136.243.155.62 funktioniert weiter, zeigt dann aber eine Zertifikatswarnung, weil das Zertifikat auf den Hostnamen lautet. Das frühere selbstsignierte Zertifikat (`docs/doichain-api-selfsigned.crt` in diesem Repo) wird nicht mehr ausgeliefert |
+| Zertifikat | **Let's Encrypt** für `doi-api.sendlabs.de` seit 25.09.2026 (certbot, automatische Erneuerung, HSTS aktiv). Kein `--cacert` und kein `-k` mehr nötig. Der Aufruf über die nackte IP-Adresse 136.243.155.62 funktioniert weiter, zeigt dann aber eine Zertifikatswarnung, weil das Zertifikat auf den Hostnamen lautet. Das frühere selbstsignierte Zertifikat (doichain-api-selfsigned.crt) wird nicht mehr ausgeliefert |
 | Kette | Doichain Mainnet nach dem Sicherheits-Fork vom 11.09.2026, Node Doichain Core v31.1.6 |
 | Explorer für Links | https://doi-explorer.le-space.de. Einzelabfragen zu Block, Transaktion, Adresse, Name und Nachweis enthalten fertige Explorer-Links |
 
@@ -288,6 +289,8 @@ Alle Fehler haben dieselbe Form, auch die, die nginx selbst erzeugt (413, 429, 5
 | API-Dienst | `systemctl status doichain-api`, Neustart `systemctl restart doichain-api`, Log `journalctl -u doichain-api -f`, nur Warnungen `journalctl -u doichain-api -p warning` |
 | Code | `/opt/doichain-api/app/doichain_api/` (`main.py` Endpunkte, `rpc.py` Node-Anbindung, `electrum.py` Adressindex, `auth.py` Schlüssel, `config.py` Einstellungen) |
 | Konfiguration | `/etc/doichain-api/doichain-api.env`, nach Änderung Dienst neu starten |
+| MCP-Dienst | `systemctl status doichain-mcp`, Log `journalctl -u doichain-mcp -f`, Code `/opt/doichain-mcp/app/doichain_mcp/server.py`, eigene venv `/opt/doichain-mcp/venv`, Umgebung `/etc/doichain-mcp/doichain-mcp.env` (erzeugt der Installer bei jedem Lauf, nur API-Adresse und öffentlicher poe-Schlüssel), Benutzer `doimcp`, Port 127.0.0.1:8081 |
+| Landingpages | `/var/www/doichain-api-site` (API), `/var/www/verifile` (Verifile), `/var/www/doichain-mcp-site` (MCP) |
 | nginx | `/etc/nginx/sites-available/doichain-api`, Logs `/var/log/nginx/doichain-api.access.log` und `.error.log`, prüfen mit `nginx -t`, neu laden mit `systemctl reload nginx` |
 | Node | `systemctl status doichaind`, Befehle `doichain-cli -datadir=/home/doichain/.doichain <befehl>`, Log `/home/doichain/.doichain/debug.log`, Konfiguration `doichain.conf` daneben |
 | ElectrumX | `systemctl status electrumx`, Konfiguration `/etc/electrumx.conf`, Port 50001 lokal |
@@ -316,7 +319,44 @@ Einstellungen in der Umgebungsdatei:
 
 **Browser zeigt „Nicht sicher" trotz gültigem Zertifikat.** Wer bei einem früheren Zertifikatsfehler dieses Hosts (etwa dem selbstsignierten Übergangszertifikat vom 25.09.2026) auf „trotzdem fortfahren" geklickt hat, sieht in Chrome danach für die gesamte Laufzeit des Browserprozesses ein rotes „Nicht sicher", obwohl der Zertifikatsdialog „gültig" meldet. Chrome merkt sich je Hostname im Arbeitsspeicher, dass Skripte mit umgangenem Zertifikatsfehler liefen. Tab schließen, neues Fenster oder Browserdaten löschen helfen nicht, `chrome://restart` in der Adressleiste behebt es. Gegenprobe: im Inkognito-Fenster ist die Seite sofort „sicher".
 
-## 12. Nächste Schritte
+## 12. KI-Agenten (MCP-Server)
+
+Seit Version 1.4.0 gibt es die Doichain auch als Werkzeugkasten für KI-Agenten. Das **Model Context Protocol (MCP)** ist der offene Standard, über den Claude, ChatGPT, Cursor, VS Code und viele andere KI-Anwendungen externe Werkzeuge einbinden. Einmal eingetragen, entscheidet der Agent selbst, wann er welches Werkzeug nutzt. Man sagt ihm einfach „Verankere den Hash von angebot.pdf in der Doichain" oder „Läuft d/beispiel bald ab?".
+
+**Adresse:** `https://doi-api.sendlabs.de/mcp` (Transport Streamable HTTP, keine Anmeldung). Wer dieselbe Adresse im Browser öffnet, bekommt die Landingpage mit Beispielen, Einbau-Anleitung für die gängigen Programme, Werkzeugliste, Sicherheitshinweisen und FAQ (Deutsch und Englisch).
+
+### Einbinden
+
+| Programm | So geht es |
+|---|---|
+| Claude Code | `claude mcp add --transport http doichain https://doi-api.sendlabs.de/mcp`, prüfen mit `claude mcp list` |
+| Claude (Web und Desktop) | Einstellungen → Konnektoren → Benutzerdefinierten Konnektor hinzufügen, Name „Doichain", URL eintragen (bezahlte Tarife) |
+| ChatGPT | Einstellungen → Apps und Konnektoren → Erweitert → Entwicklermodus, dann Konnektor erstellen, Authentifizierung „Keine" |
+| Cursor | `~/.cursor/mcp.json`: `{"mcpServers": {"doichain": {"url": "https://doi-api.sendlabs.de/mcp"}}}` |
+| VS Code | `.vscode/mcp.json`: `{"servers": {"doichain": {"type": "http", "url": "https://doi-api.sendlabs.de/mcp"}}}` |
+
+### Die 13 Werkzeuge
+
+| Werkzeug | Wofür |
+|---|---|
+| `anchor_proof` | Hash eines Dokuments verankern (einziges schreibendes Werkzeug). Ist der Hash schon verankert, kommt der bestehende Nachweis zurück |
+| `check_proof` | Ist der Hash verankert, seit wann, in welchem Block |
+| `hash_text` | SHA-256 eines Textes, um Aussagen oder Nachrichten zu verankern (Dateien hasht der Agent selbst, zum Beispiel mit `sha256sum`) |
+| `get_anchoring_quota` | verbleibende Nachweise des Tages |
+| `lookup_name`, `get_name_history`, `search_names` | Namen lesen, ihre Historie, Suche nach Präfix |
+| `check_name_expiry` | bis zu 25 Namen auf einmal: aktiv, läuft bald ab, abgelaufen oder frei, mit geschätztem Datum aus dem gemessenen Blockabstand (derzeit gut 9 Minuten) |
+| `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message` | Zustand der Kette, Blöcke, Transaktionen, Adressguthaben, signierte Nachrichten prüfen |
+
+### Wie es gebaut ist
+
+- Eigener Dienst `doichain-mcp` (Python, MCP-SDK 2.2) unter eigenem Benutzer `doimcp`. Er ruft ausschließlich die REST-API auf und hat keinen Zugriff auf RPC, Wallet oder die Schlüsseldatei der API. Es gibt keine Werkzeuge für Auszahlungen, Namensänderungen oder den RPC-Durchgriff.
+- Verankern nutzt denselben öffentlichen poe-Schlüssel wie Verifile, also dasselbe Tageskontingent: **10 Nachweise je Tag und IP-Adresse, 200 insgesamt**. nginx gibt die Adresse des Aufrufers als `X-Real-IP` mit, der MCP-Server reicht sie an die API weiter. Wer einen eigenen write-Schlüssel im Header `X-API-Key` oder `Authorization: Bearer` mitschickt, hat kein Kontingent.
+- Werte, die Fremde in die Kette geschrieben haben (Namenswerte, Notizen), tragen in den Antworten die Endung `_untrusted` und einen Hinweis. So behandelt ein Agent sie als Daten und nicht als Anweisung (Schutz gegen Prompt-Injection über die Blockchain).
+- Zustandslos mit JSON-Antworten, deshalb unproblematisch hinter nginx und mit zwei Workern. Unterstützt die Protokollversionen 2024-11-05 bis 2026-07-28, getestet mit den offiziellen Clients der SDK-Versionen 1.30 und 2.2.
+- nginx: eigene Ratenzone (5 Anfragen je Sekunde und IP), Anfragen bis 256 KB, `GET /mcp` im Browser zeigt die Landingpage, sonst 405, `/mcp/health` für die Überwachung. Der Server prüft zusätzlich Host und Origin (Schutz gegen DNS-Rebinding).
+- `server.json` im Repo ist der vorbereitete Eintrag für das offizielle MCP-Verzeichnis (registry.modelcontextprotocol.io), Veröffentlichung siehe Abschnitt 13.
+
+## 13. Nächste Schritte
 
 1. **Hostname und echtes Zertifikat.** Sobald ein Name auf 136.243.155.62 zeigt (Empfehlung `api.doi.zone`, bis dahin `doi-api.sendlabs.de` als A-Record im 1blu-KSB), auf dem Server ausführen:
 
@@ -331,16 +371,18 @@ Einstellungen in der Umgebungsdatei:
 5. **Datenschutzhinweis** für Verifile und Landingpage (beide setzen keine Cookies und laden nichts von Dritten, ein kurzer Hinweis genügt). Das Impressum beider Seiten verlinkt seit 26.09.2026 auf https://www.doichain.org/en/imprint/, der DOI-Labs-Link auf https://www.doichain.org/en/.
 6. **David informieren** (Gmail-Entwurf „doi-btc-node: Node auf v31.1.6 und neue REST-API" liegt bereit).
 7. Optional: `DOI_PUBLIC_READ=false` setzen und Leseschlüssel vergeben, wenn die API nicht öffentlich lesbar sein soll.
+8. **MCP-Server bekannt machen** (nur nach Freigabe durch Ottmar, weil es eine Veröffentlichung ist): Eintrag im offiziellen MCP-Verzeichnis mit `mcp-publisher login github` (Anmeldung als GitHub-Konto `neubuot`) und `mcp-publisher publish` im Repo-Ordner, der Name `io.github.neubuot/doichain` steht in `server.json`. Danach optional Smithery und das Konnektor-Verzeichnis von Anthropic.
 
-## 13. Sicherheit in Kürze
+## 14. Sicherheit in Kürze
 
 - Schlüssel nur in der Umgebungsdatei und in Vaultwarden. Der admin-Schlüssel erlaubt Auszahlungen.
 - Das Node-Wallet ist ein Hot Wallet mit Betriebsguthaben, nie mehr als nötig einzahlen.
 - RPC der Node und ElectrumX sind nur lokal erreichbar, von außen gibt es nur nginx auf 443 (und 80 als Umleitung). nginx verrät keine Version, Einbettung in fremde Seiten ist unterbunden, TLS nur mit Forward-Secrecy-Verfahren (ECDHE), keine Sitzungs-Tickets.
 - Ratenbegrenzung in nginx, JSON-Anfragen bis 64 KB, Rohtransaktionen bis 1 MB, Uploads bis 50 MB nur auf den zwei Datei-Endpunkten mit eigener engerer Begrenzung, reguläre Ausdrücke in der Namenssuche nur mit Schlüssel, Sperrliste plus Präfixregel im RPC-Durchgriff, gehärteter systemd-Dienst ohne Schreibrecht auf dem System.
-- Bis zur DNS-Umstellung ist das Zertifikat selbstsigniert. Mit `--cacert` bleibt die Verbindung geprüft, für Partner erst den Hostnamen umstellen.
+- Let's-Encrypt-Zertifikat für `doi-api.sendlabs.de` seit 25.09.2026 mit HSTS, automatische Erneuerung durch certbot.
+- Der MCP-Server läuft getrennt unter eigenem Benutzer, kennt nur den öffentlichen poe-Schlüssel und kann weder Coins senden noch Namen ändern. Ketteninhalte kennzeichnet er als nicht vertrauenswürdig.
 
-## 14. Hintergrund
+## 15. Hintergrund
 
 **Doichain in einem Absatz.** Doichain ist ein Namecoin-Fork der Bitcoin-Familie (UTXO, SegWit, Merged Mining mit Bitcoin). P2P-Port 8338, RPC-Port 8339, Adressen `N…`, `6…`, `dc1q…`, 8 Nachkommastellen. Am 11.09.2026 gab es bei Block 431017 einen Sicherheits-Fork (DigiShield v3, Prüfung der Difficulty, strikte Eigentümerschaft für `name_doi`), die Kette trennt sich bei 431018 (`71d50ff1…`). Details in der Integrationsspezifikation.
 
@@ -348,7 +390,7 @@ Einstellungen in der Umgebungsdatei:
 
 **ElectrumX.** Der Doichain-Fork von ElectrumX (Version 2.0.0, mit Namensindex) liefert Adressguthaben und -historien. Er hört lokal auf 50001 (TCP) und 50002/50004 (TLS, selbstsigniert). Für Electrum-DOI-Wallets von außen wären die Ports zu öffnen und ein echtes Zertifikat einzubinden, das ist bewusst nicht geschehen.
 
-## 15. Verwandt
+## 16. Verwandt
 
 - Einrichtungsbericht 2026-09-25 – Doichain-API auf doi-btc-node
 - 2026-08-30 Hetzner-Serverbestellung – Doichain-Node-Server · Server-Gesamtübersicht

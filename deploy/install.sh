@@ -85,6 +85,34 @@ else
 fi
 ln -sf "$NGXV" /etc/nginx/sites-enabled/verifile
 
+# MCP-Server (doichain_mcp): eigener Systembenutzer ohne Zugriff auf /etc/doichain-api, eigene venv.
+# Die Umgebungsdatei wird bei jedem Lauf neu erzeugt (nur API-Adresse und oeffentlicher poe-Schluessel).
+MCP_BASE=/opt/doichain-mcp
+MCP_ENV=/etc/doichain-mcp/doichain-mcp.env
+id doimcp >/dev/null 2>&1 || useradd --system --home-dir "$MCP_BASE" --shell /usr/sbin/nologin doimcp
+install -d -o doimcp -g doimcp -m 0750 "$MCP_BASE" "$MCP_BASE/app"
+[ -x "$MCP_BASE/venv/bin/python" ] || sudo -u doimcp python3 -m venv "$MCP_BASE/venv"
+rsync -a --delete --exclude "__pycache__" "$SRC/doichain_mcp/" "$MCP_BASE/app/doichain_mcp/"
+install -m 0644 "$SRC/requirements-mcp.txt" "$MCP_BASE/app/requirements-mcp.txt"
+chown -R doimcp:doimcp "$MCP_BASE"
+chmod -R o-rwx "$MCP_BASE/app"
+sudo -u doimcp "$MCP_BASE/venv/bin/pip" install -q -r "$MCP_BASE/app/requirements-mcp.txt"
+install -d -o root -g doimcp -m 0750 /etc/doichain-mcp
+( umask 027
+  printf "%s\n" \
+    "# Doichain MCP-Server. Wird von deploy/install.sh erzeugt, Aenderungen dort vornehmen." \
+    "# Enthaelt nur den oeffentlichen poe-Schluessel (steht ohnehin in der Verifile-App)." \
+    "DOI_MCP_API_URL=http://127.0.0.1:8080" \
+    "DOI_MCP_PUBLIC_URL=$API_BASE" \
+    "DOI_MCP_VERIFILE_URL=https://verifile.it" \
+    "DOI_MCP_POE_KEY=$POE_KEY" \
+    "DOI_MCP_ALLOWED_HOSTS=doi-api.sendlabs.de,api.doi.zone,127.0.0.1:*,localhost:*" > "$MCP_ENV" )
+chown root:doimcp "$MCP_ENV"; chmod 0640 "$MCP_ENV"
+install -d -m 0755 /var/www/doichain-mcp-site
+rsync -a --delete "$SRC/web/mcp-site/" /var/www/doichain-mcp-site/
+chown -R root:root /var/www/doichain-mcp-site
+install -m 0644 "$SRC/deploy/doichain-mcp.service" /etc/systemd/system/doichain-mcp.service
+
 # Einzahlungsadresse mit Label api-funding einmalig anlegen (nur wenn die Node erreichbar ist).
 if command -v doichain-cli >/dev/null && [ -d /home/doichain/.doichain ]; then
   CLI="doichain-cli -datadir=/home/doichain/.doichain -rpcwallet=doichain"
@@ -108,7 +136,11 @@ nginx -t
 systemctl daemon-reload
 systemctl enable doichain-api.service >/dev/null 2>&1 || true
 systemctl restart doichain-api.service
+systemctl enable doichain-mcp.service >/dev/null 2>&1 || true
+systemctl restart doichain-mcp.service
 systemctl reload nginx
 sleep 3
 systemctl --no-pager --lines=0 status doichain-api.service | head -5
 curl -s -m 15 http://127.0.0.1:8080/health; echo
+systemctl --no-pager --lines=0 status doichain-mcp.service | head -3
+curl -s -m 20 http://127.0.0.1:8081/health; echo

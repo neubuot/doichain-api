@@ -58,7 +58,7 @@
   <div class="bg" aria-hidden="true"><div class="orb a"></div><div class="orb b"></div><div class="grid"></div></div>
   <header>
     <a class="brand" href="/"><svg viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#101736"/><circle cx="32" cy="32" r="13" fill="none" stroke="#60a5fa" stroke-width="6"/><circle cx="32" cy="32" r="4" fill="#34d399"/></svg>Doichain API</a>
-    <nav><a href="#features">Funktionen</a><a href="#play">Spielwiese</a><a href="#code">Code</a><a href="#access">Zugriff</a><a href="/docs">Doku</a></nav>
+    <nav><a href="#features">Funktionen</a><a href="#play">Spielwiese</a><a href="#code">Code</a><a href="#access">Zugriff</a><a href="/mcp">KI-Agenten</a><a href="/docs">Doku</a></nav>
   </header>
 
   <main>
@@ -69,6 +69,7 @@
       <div class="cta">
         <a class="btn primary" href="/docs">Interaktive Dokumentation</a>
         <a class="btn" href="https://verifile.it/">Verifile: Nachweis-App</a>
+        <a class="btn" href="/mcp">Für KI-Agenten (MCP)</a>
         <a class="btn" href="#play">Direkt ausprobieren</a>
       </div>
       <div class="status-line" id="statusLine"><span class="dot" id="dot"></span><span id="statusText">Node wird abgefragt …</span></div>
@@ -76,7 +77,7 @@
 
     <section id="features">
       <h2>Was die API kann</h2>
-      <p class="sub">Alle Doichain-Funktionen in sieben Gruppen, jede Antwort als JSON mit fertigen Explorer-Links.</p>
+      <p class="sub">Alle Doichain-Funktionen in acht Gruppen, jede Antwort als JSON mit fertigen Explorer-Links.</p>
       <div class="features">
         <div class="feat"><div class="ic">✓</div><h3>Proof of Existence</h3><p>SHA-256 einer Datei als Name <code>poe/&lt;hash&gt;</code> verankern und prüfen: <code>GET /v1/poe/{hash}</code>, <code>POST /v1/poe</code>, Datei-Upload optional.</p></div>
         <div class="feat"><div class="ic">⌘</div><h3>Namen und name_doi</h3><p>Lesen, durchsuchen, Historie, registrieren, verlängern, übertragen: <code>/v1/name/…</code>, <code>/v1/names</code>, <code>POST /v1/name/doi</code>.</p></div>
@@ -84,6 +85,7 @@
         <div class="feat"><div class="ic">◎</div><h3>Adressen</h3><p>Guthaben, Historie und UTXOs beliebiger Adressen (<code>N…</code>, <code>6…</code>, <code>dc1q…</code>) über den lokalen ElectrumX.</p></div>
         <div class="feat"><div class="ic">▣</div><h3>Wallet</h3><p>Guthaben, Adressen, Auszahlungen mit fester Gebührenrate, nur mit Schlüssel: <code>/v1/wallet/…</code>.</p></div>
         <div class="feat"><div class="ic">⚙</div><h3>Werkzeuge</h3><p>Adressen prüfen, Nachrichten signieren und prüfen, Gebührenempfehlung, generischer RPC-Durchgriff mit Sperrliste.</p></div>
+        <div class="feat"><div class="ic">✦</div><h3>KI-Agenten (MCP)</h3><p>Claude, ChatGPT, Cursor und andere Agenten nutzen die Doichain über den MCP-Server unter <code>/mcp</code>: verankern, prüfen, Namen lesen. <a href="/mcp">Einbinden</a></p></div>
         <div class="feat"><div class="ic">♥</div><h3>Betrieb</h3><p><code>/health</code> meldet nur dann ok, wenn die Kette synchron ist und die Fork-Prüfung stimmt. Einheitliches Fehlerformat, OpenAPI 3.1.</p></div>
       </div>
     </section>
@@ -137,6 +139,7 @@
         <a class="link" href="https://doi-explorer.le-space.de" target="_blank" rel="noopener">Doichain Explorer<small>Blöcke, Transaktionen und Namen zum Nachschlagen</small></a>
         <a class="link" href="https://github.com/Doichain/doichain-core" target="_blank" rel="noopener">Doichain Core<small>Referenzclient v31.1.6 mit Releases und Issues</small></a>
         <a class="link" href="https://verifile.it/">Verifile<small>Die Nachweis-App auf Basis dieser API (verifile.it)</small></a>
+        <a class="link" href="/mcp">MCP-Server<small>Die Doichain als Werkzeug für KI-Agenten, eine Adresse genügt</small></a>
       </div>
     </section>
   </main>

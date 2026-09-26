@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.neubuot/doichain",
+  "title": "Doichain",
+  "description": "Proof of existence, names and chain data of the Doichain blockchain for AI agents",
+  "version": "1.4.0",
+  "websiteUrl": "https://doi-api.sendlabs.de/mcp",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://doi-api.sendlabs.de/mcp"
+    }
+  ]
+}
