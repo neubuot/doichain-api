@@ -145,7 +145,14 @@
     }
     return data;
   }
-  const getStatus = (hash) => api("/poe/" + hash);
+  // Ein abgelaufener und spaeter erneut verankerter Nachweis zaehlt ab der ersten Verankerung (first_anchored).
+  const getStatus = (hash) => api("/poe/" + hash).then((info) => {
+    const first = info && info.first_anchored;
+    if (first && first.block_time_iso && first.txid && first.txid !== info.txid) {
+      return Object.assign({}, info, { block_time_iso: first.block_time_iso, height: first.height, txid: first.txid, confirmations: first.confirmations, explorer_tx: first.explorer_tx, latest_txid: info.txid });
+    }
+    return info;
+  });
   const getQuota = () => cfg.poeKey ? api("/poe/quota", { key: true }).catch(() => null) : Promise.resolve(null);
   const createProof = (hash, filename, note) => api("/poe", { method: "POST", key: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ hash, filename: filename || undefined, note: note || undefined }) });
 

@@ -2,15 +2,31 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.4.1 (2026-09-26)
+
+Kurze Prüfrunde des MCP-Servers (drei Prüfer, ein Gegenprüfer, 41 Meldungen, alle bestätigt, viele doppelt) eingearbeitet.
+
+- REST-API: neue Namensabfragen per Query-Parameter `GET /v1/name?name=…` und `GET /v1/names/history?name=…`. Namen, die auf `/history` enden, landeten im Pfadformat bei der Historie des kürzeren Namens. Der MCP-Server nutzt nur noch die neuen Endpunkte.
+- REST-API: `GET /v1/poe/{hash}` liefert `first_anchored` (erste Verankerung aus `name_history`). Wird ein abgelaufener Nachweis später erneut verankert, bleibt der erste Zeitpunkt der Nachweiszeitpunkt. MCP-Werkzeug `check_proof` und Verifile zeigen ihn an.
+- REST-API: `/v1/status` meldet `wallet.public_poe_available` (Reserve von 5 DOI erreicht), `get_chain_status` und die Landingpage nutzen das Flag.
+- MCP: echte Ablaufzeit für abgelaufene Namen (Block Höhe plus 36.000) statt einer Rückrechnung über den heutigen Blockabstand, Namen aus Suche und Transaktionen als `name_untrusted` gekennzeichnet, englische Fehlertexte mit dem deutschen Detail der API, Bearer-Token von Gateways werden ignoriert (Rückfall auf den öffentlichen Schlüssel), `hash_text` höchstens 40.000 Zeichen, `get_block` nimmt auch Zahlen, Transaktions-IDs mit `0x`, leere Präfixe abgewiesen, Adressen vorab geprüft, `verify_message` nennt die Beschränkung auf Legacy-Adressen.
+- MCP: höchstens sechs gleichzeitige Aufrufe an die REST-API je Worker, Zwischenspeicher für Namens- und Blockabfragen, Ergebnis von `/mcp/health` 15 Sekunden gespeichert, ruhiges Journal ohne Zugriffsprotokoll (nginx protokolliert).
+- nginx: eigene JSON-RPC-Fehlerseiten für 405 (mit `Allow: POST`), 413 und 429 (mit `Retry-After`) auf `/mcp`, Ratenzone 10 je Sekunde mit Burst 40, Ratenbegrenzung auch auf `/mcp/health`, CSP der Landingpage ohne Fremdquellen.
+- systemd: `doichain-mcp` nur noch mit lokalen Verbindungen (`IPAddressDeny=any`, `IPAddressAllow=localhost`), Systemaufruf-Filter, keine Capabilities, weitere Schutzoptionen.
+- Landingpage: aktuelle Menüpfade für Claude (Anpassen → Konnektoren, auch im kostenlosen Tarif) und ChatGPT (Entwicklermodus unter Sicherheit und Anmeldung, bezahlte Tarife), `claude mcp add --scope user`, ehrliche Angaben zu `hash_text`, Kontingent, Protokollen und Browser-Clients, neuer FAQ-Punkt zu gehosteten Apps, Reiter mit Tastatur und ARIA, Titel ohne Halbgeviertstrich.
+- Alle drei Seiten (API, Verifile, MCP) ohne Google Fonts, sie nutzen Systemschriften.
+- `server.json` auf das aktuelle Schema 2025-12-11.
+- Bewusst belassen: Das SDK meldet leere Prompt- und Ressourcenlisten als Fähigkeiten an, und JSON-RPC-Batches lehnt es ab. Beides ist Standardverhalten des MCP-SDK 2.2 und für Clients unschädlich.
+
 ## 1.4.0 (2026-09-26)
 
 MCP-Server für KI-Agenten.
 
-- **Doichain MCP-Server** (`doichain_mcp/server.py`, MCP-SDK 2.2): 13 Werkzeuge für Agenten, `anchor_proof`, `check_proof`, `hash_text`, `get_anchoring_quota`, `lookup_name`, `get_name_history`, `check_name_expiry`, `search_names`, `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message`. Streamable HTTP, zustandslos, JSON-Antworten, Protokolle 2024-11-05 bis 2026-07-28, Werkzeug-Annotationen (nur `anchor_proof` schreibt).
+- **Doichain MCP-Server** (`doichain_mcp/server.py`, MCP-SDK 2.2): 13 Werkzeuge für Agenten, `anchor_proof`, `check_proof`, `hash_text`, `get_anchoring_quota`, `lookup_name`, `get_name_history`, `check_name_expiry`, `search_names`, `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message`. Streamable HTTP, zustandslos, JSON-Antworten, Protokolle 2024-11-05 bis 2026-07-28, Werkzeugannotationen (nur `anchor_proof` schreibt).
 - Eigener Dienst `doichain-mcp` (Benutzer `doimcp`, 127.0.0.1:8081, eigene venv) ohne Zugriff auf RPC, Wallet und die Schlüsseldatei der API. Ruft ausschließlich die REST-API auf und reicht die Client-IP aus `X-Real-IP` als `X-Forwarded-For` weiter, damit das Tageskontingent je Aufrufer gilt. Eigener Schlüssel optional per `X-API-Key` oder `Authorization: Bearer`.
 - Werte aus der Kette tragen die Endung `_untrusted` und einen Hinweis, damit Agenten sie nicht als Anweisung lesen. Bereits verankerte Hashes liefert `anchor_proof` als bestehenden Nachweis zurück, statt einen Fehler zu melden. Ablaufdaten schätzt `check_name_expiry` aus dem gemessenen Blockabstand der letzten 1000 Blöcke.
 - nginx: `/mcp` für MCP-Clients (eigene Ratenzone 5/s, 256 KB), Browser bekommen unter derselben Adresse die Landingpage, `GET` ohne HTML ergibt 405, `/mcp/` leitet mit 308 um, `/mcp/health` für die Überwachung. Host- und Origin-Prüfung im Server (DNS-Rebinding-Schutz).
-- **Landingpage des MCP-Servers** (`web/mcp-site`): Beispiele, Einbau-Anleitung für Claude Code, Claude, ChatGPT, Cursor, VS Code und andere Clients, Werkzeuge, Sicherheit, FAQ, Deutsch und Englisch, Live-Status, strenge Content-Security-Policy ohne Inline-Skripte.
+- **Landingpage des MCP-Servers** (`web/mcp-site`): Beispiele, Einbauanleitung für Claude Code, Claude, ChatGPT, Cursor, VS Code und andere Clients, Werkzeuge, Sicherheit, FAQ, Deutsch und Englisch, Live-Status, strenge Content-Security-Policy ohne Inline-Skripte.
 - `server.json` für das offizielle MCP-Verzeichnis, API-Landingpage verlinkt den MCP-Server, Installer richtet Benutzer, venv, Umgebungsdatei, Dienst und Seite ein.
 - Erster Nachweis über MCP am 26.09.2026 (Transaktion `a7af1851…`).
 

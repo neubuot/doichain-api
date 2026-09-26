@@ -12,12 +12,12 @@ as a documented REST API with API-key tiers, nginx TLS termination and rate limi
 
 Produktivinstanz: Hetzner-Server `doi-btc-node`, **https://doi-api.sendlabs.de/** (Landingpage mit Spielwiese,
 `/docs` Swagger, `/poe/` die Nachweis-App Verifile), Let's Encrypt, später zusätzlich `api.doi.zone`.
-Betreiber: DOI Labs AG. Stand: Version 1.4.0, 26.09.2026.
+Betreiber: DOI Labs AG. Stand: Version 1.4.1, 26.09.2026.
 
 **Neu in 1.4.0: MCP-Server für KI-Agenten** unter **https://doi-api.sendlabs.de/mcp**. Claude, ChatGPT, Cursor,
 VS Code und jeder andere MCP-Client binden die Doichain mit dieser einen Adresse ein (Streamable HTTP, ohne Anmeldung)
 und können Nachweise verankern und prüfen, Namen, Blöcke, Transaktionen und Adressen lesen. Im Browser zeigt dieselbe
-Adresse die Landingpage mit Einbau-Anleitung.
+Adresse die Landingpage mit Einbauanleitung.
 
 Drei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausgeliefert:
 
@@ -27,7 +27,7 @@ Drei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausge
   Live unter **https://verifile.it/** (Let's Encrypt, `deploy/nginx-verifile.conf`), zusätzlich unter `/poe/` des API-Hosts.
 - **Landingpage der API** (`web/api-site`): Erklärung, Live-Status der Node, Spielwiese für lesende Aufrufe,
   Codebeispiele und Links, ausgeliefert unter `/` des API-Hosts.
-- **Landingpage des MCP-Servers** (`web/mcp-site`): Einbau-Anleitung für Claude Code, Claude, ChatGPT, Cursor und VS Code,
+- **Landingpage des MCP-Servers** (`web/mcp-site`): Einbauanleitung für Claude Code, Claude, ChatGPT, Cursor und VS Code,
   Werkzeugliste, Sicherheit, FAQ, Deutsch und Englisch. nginx liefert sie aus, wenn ein Browser `/mcp` aufruft.
 
 ## Inhalt
@@ -54,7 +54,7 @@ Drei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausge
 | Status | `GET /health` (503 bei stehender Kette, fehlenden Headern, IBD oder Fork-Verstoß), `GET /v1/status` |
 | Kette | `GET /v1/blocks`, `GET /v1/block/{höhe oder hash}`, `GET /v1/tx/{txid}` (mit dekodierten Namensoperationen), `POST /v1/tx/decode`, `POST /v1/tx/send`, `GET /v1/mempool`, `GET /v1/network` |
 | Adressen | `GET /v1/address/{adresse}`, `/history`, `/utxos` für `N…`, `6…` und `dc1q…` |
-| Namen | `GET /v1/name/{name}`, `/history`, `GET /v1/names` (Blättern über `after`/`next_after`), `GET /v1/names/pending`, `POST /v1/name/doi`, `/update`, `/new`, `/firstupdate`, `/sendtoname` |
+| Namen | `GET /v1/name/{name}`, `/history`, `GET /v1/name?name=…` und `GET /v1/names/history?name=…` (eindeutig für jeden Namen), `GET /v1/names` (Blättern über `after`/`next_after`), `GET /v1/names/pending`, `POST /v1/name/doi`, `/update`, `/new`, `/firstupdate`, `/sendtoname` |
 | Proof of Existence | `GET /v1/poe/{sha256}`, `POST /v1/poe/verify`, `POST /v1/poe/verify/file`, `POST /v1/poe`, `POST /v1/poe/file` |
 | Wallet | `GET /v1/wallet`, `/funding-address`, `/names`, `/transactions`, `/utxos`, `POST /v1/wallet/address`, `/abandon`, `/send` |
 | Werkzeuge | `GET /v1/validate/{adresse}`, `POST /v1/message/verify`, `/sign`, `GET /v1/fee`, `POST /v1/rpc` (Durchgriff mit Sperrliste) |
@@ -231,14 +231,14 @@ und die Schlüsseldatei der API hat er keinen Zugriff.
 Einbinden, zum Beispiel in Claude Code:
 
 ```bash
-claude mcp add --transport http doichain https://doi-api.sendlabs.de/mcp
+claude mcp add --scope user --transport http doichain https://doi-api.sendlabs.de/mcp
 ```
 
 | Werkzeug | Zweck |
 |---|---|
 | `anchor_proof` | SHA-256 als `poe/<hash>` verankern (einziges schreibendes Werkzeug, bereits verankerte Hashes werden erkannt) |
 | `check_proof` | Status, Block, Zeit und Transaktion eines Nachweises |
-| `hash_text` | SHA-256 eines Textes (im Server berechnet, nichts wird gespeichert) |
+| `hash_text` | SHA-256 eines kurzen Textes (im Server berechnet, nichts wird gespeichert, Dateien hasht der Agent selbst) |
 | `get_anchoring_quota` | verbleibendes Tageskontingent des Aufrufers |
 | `lookup_name`, `get_name_history`, `search_names` | Namen lesen, Historie, Suche nach Präfix |
 | `check_name_expiry` | bis zu 25 Namen: aktiv, läuft bald ab, abgelaufen, frei, mit geschätztem Datum (gemessener Blockabstand) |
@@ -247,10 +247,12 @@ claude mcp add --transport http doichain https://doi-api.sendlabs.de/mcp
 Verankern nutzt den öffentlichen poe-Schlüssel (derselbe wie Verifile) mit dem Tageskontingent je Client-IP.
 nginx setzt `X-Real-IP`, der MCP-Server reicht die Adresse als `X-Forwarded-For` an die API weiter. Wer einen
 eigenen Schlüssel im Header `X-API-Key` oder `Authorization: Bearer` mitschickt, verankert damit (write-Schlüssel
-ohne Kontingent). Werte aus der Kette tragen in den Antworten die Endung `_untrusted`, damit Agenten sie als Daten
+ohne Kontingent). Gehostete Apps (Claude im Browser, ChatGPT) verbinden sich aus den Rechenzentren ihrer Anbieter,
+ihre Nutzer teilen sich deshalb das Kontingent dieser Adressen. Namen und Werte aus der Kette tragen in den Antworten die Endung `_untrusted`, damit Agenten sie als Daten
 und nicht als Anweisung behandeln. `GET /mcp` ohne `text/html` beantwortet nginx mit 405 (kein SSE-Strom im
 zustandslosen Betrieb), Browser bekommen die Landingpage. Gesundheitsprüfung: `GET /mcp/health`.
-Unterstützte Protokollversionen: 2024-11-05 bis 2026-07-28. `server.json` enthält den Eintrag für das
+Unterstützte Protokollversionen: 2024-11-05 bis 2026-07-28, keine JSON-RPC-Batches, keine Clients direkt im Browser (kein CORS).
+Namen fragt der MCP-Server über `GET /v1/name?name=…` ab, weil Namen mit `/history` am Ende im Pfadformat mehrdeutig sind. `server.json` enthält den Eintrag für das
 offizielle MCP-Verzeichnis (registry.modelcontextprotocol.io), veröffentlicht wird er mit `mcp-publisher`.
 
 ## Betrieb

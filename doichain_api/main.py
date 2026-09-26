@@ -398,6 +398,35 @@ def build_poe_value(hash_hex: str, filename: str | None, note: str | None) -> st
     return encoded
 
 
+async def first_registration(name: str, entry: dict, current_tx: dict) -> dict:
+    """Erste Registrierung eines Namens laut name_history. Ein abgelaufener und spaeter erneut verankerter
+    Nachweis zaehlt ab dem ersten Zeitpunkt, deshalb liefert poe_status diesen Block zusaetzlich."""
+    first = {
+        "txid": entry["txid"],
+        "height": entry.get("height"),
+        "block_time": current_tx.get("blocktime"),
+        "block_time_iso": iso(current_tx.get("blocktime")),
+        "confirmations": current_tx.get("confirmations", 0),
+        "explorer_tx": explorer_link("tx", entry["txid"]),
+    }
+    try:
+        history = await rpc.call("name_history", name, name_options())
+    except RPCError:
+        return {**first, "registrations": None}
+    if history and history[0].get("txid") and history[0]["txid"] != entry["txid"]:
+        oldest = history[0]
+        tx0 = await rpc.call("getrawtransaction", oldest["txid"], True)
+        first = {
+            "txid": oldest["txid"],
+            "height": oldest.get("height"),
+            "block_time": tx0.get("blocktime"),
+            "block_time_iso": iso(tx0.get("blocktime")),
+            "confirmations": tx0.get("confirmations", 0),
+            "explorer_tx": explorer_link("tx", oldest["txid"]),
+        }
+    return {**first, "registrations": len(history) if history else 1}
+
+
 async def poe_status(hash_hex: str) -> dict:
     name = poe_name(hash_hex)
     entry = await name_show_or_none(name)
@@ -430,6 +459,7 @@ async def poe_status(hash_hex: str) -> dict:
                 "value": value,
                 "value_json": value_json,
                 "explorer_tx": explorer_link("tx", entry["txid"]),
+                "first_anchored": await first_registration(name, entry, tx),
             }
         )
     if pending:
@@ -601,7 +631,7 @@ async def status(level: int = Depends(require("read"))):
         if level >= LEVELS["write"]:
             wallet = {"name": settings.rpc_wallet, "balance": trusted, "pending": balances["mine"]["untrusted_pending"]}
         else:
-            wallet = {"funded": float(trusted) > 0}
+            wallet = {"funded": float(trusted) > 0, "public_poe_available": float(trusted) >= PUBLIC_POE_RESERVE}
     except RPCError as exc:
         wallet = {"error": exc.message}
     return {
@@ -854,7 +884,7 @@ async def name_history(
     return {"name": name, "count": len(history), "history": [with_explorer(h) for h in history]}
 
 
-@app.get("/v1/name/{name:path}", tags=["Namen"], summary="Aktuellen Wert eines Namens lesen (name_show)", description="Abgelaufene Namen kommen mit 200 und expired:true (negatives expires_in), unbekannte mit 404. pending:true zeigt eine wartende Operation im Mempool, auch bei bestehenden Namen (Erneuerung, Aktualisierung).", dependencies=[Depends(require("read"))])
+@app.get("/v1/name/{name:path}", tags=["Namen"], summary="Aktuellen Wert eines Namens lesen (name_show)", description="Abgelaufene Namen kommen mit 200 und expired:true (negatives expires_in), unbekannte mit 404. pending:true zeigt eine wartende Operation im Mempool, auch bei bestehenden Namen (Erneuerung, Aktualisierung). Namen, die auf /history enden oder . und .. als Pfadsegment enthalten, sind im Pfad mehrdeutig, dafuer GET /v1/name?name=... verwenden.", dependencies=[Depends(require("read"))])
 async def name_show(
     name: str = Path(..., description="Name, Schraegstriche erlaubt (poe/…, e/…)"),
     value_encoding: str | None = Query(None, description="ascii, utf8 (Standard) oder hex"),
@@ -871,6 +901,22 @@ async def name_show(
     if pending:
         entry["pending_ops"] = [with_explorer(p) for p in pending]
     return with_explorer(entry)
+
+
+@app.get("/v1/name", tags=["Namen"], summary="Namen per Query-Parameter lesen (eindeutig fuer jeden Namen)", description="Wie GET /v1/name/{name}, der Name steht aber im Query-Parameter name. Empfohlen fuer Programme, weil Namen mit /history am Ende oder Punkt-Segmenten im Pfad mehrdeutig sind.", dependencies=[Depends(require("read"))])
+async def name_show_query(
+    name: str = Query(..., min_length=1, max_length=1024, description="Name, zum Beispiel poe/<hash> oder d/beispiel"),
+    value_encoding: str | None = Query(None, description="ascii, utf8 (Standard) oder hex"),
+):
+    return await name_show(name=name, value_encoding=value_encoding)
+
+
+@app.get("/v1/names/history", tags=["Namen"], summary="Historie eines Namens per Query-Parameter (eindeutig fuer jeden Namen)", dependencies=[Depends(require("read"))])
+async def name_history_query(
+    name: str = Query(..., min_length=1, max_length=1024, description="Name, zum Beispiel poe/<hash> oder d/beispiel"),
+    value_encoding: str | None = Query(None, description="ascii, utf8 (Standard) oder hex"),
+):
+    return await name_history(name=name, value_encoding=value_encoding)
 
 
 @app.post("/v1/name/doi", tags=["Namen"], summary="Namen per name_doi registrieren, aktualisieren oder verlaengern (write)", description="Ein freier oder abgelaufener Name wird registriert, ein eigener aktiver Name aktualisiert (das verlaengert den Ablauf um 36.000 Bloecke). Je Name ist nur eine unbestaetigte Operation erlaubt.", dependencies=[Depends(require("write"))])
@@ -942,11 +988,15 @@ def client_ip(request: Request) -> str:
     return host
 
 
+# Unter dieser Reserve (DOI, bestaetigt) pausieren die oeffentlichen Nachweise mit poe-Schluessel.
+PUBLIC_POE_RESERVE = 5.0
+
+
 async def public_poe_guard() -> None:
     """Oeffentliche Nachweise nur, solange das Wallet eine Reserve behaelt."""
     try:
         balances = await rpc.call("getbalances", wallet=True)
-        if float(balances["mine"]["trusted"]) < 5.0:
+        if float(balances["mine"]["trusted"]) < PUBLIC_POE_RESERVE:
             raise HTTPException(503, "Die oeffentliche Nachweis-App ist vorerst pausiert, das Betriebsguthaben ist aufgebraucht. Mit eigenem write-Schluessel weiterhin moeglich")
     except RPCError:
         pass
@@ -959,7 +1009,7 @@ async def poe_quota(request: Request, level: int = Depends(require("poe"))):
     return {"unlimited": False, **quota.usage(client_ip(request))}
 
 
-@app.get("/v1/poe/{hash}", tags=["Proof of Existence"], summary="Nachweis zu einem SHA-256-Hash pruefen", description="status ist unknown (nie registriert), pending (Registrierung wartet im Mempool), confirmed (aktiv in der Kette) oder expired (abgelaufen, Beweis bleibt in der Historie).", dependencies=[Depends(require("read"))])
+@app.get("/v1/poe/{hash}", tags=["Proof of Existence"], summary="Nachweis zu einem SHA-256-Hash pruefen", description="status ist unknown (nie registriert), pending (Registrierung wartet im Mempool), confirmed (aktiv in der Kette) oder expired (abgelaufen, Beweis bleibt in der Historie). first_anchored nennt die erste Verankerung (bei einem abgelaufenen und erneut verankerten Hash die fruehere), sie ist der eigentliche Nachweiszeitpunkt.", dependencies=[Depends(require("read"))])
 async def poe_get(hash: str = Path(..., description="SHA-256 der Datei, 64 Hex-Zeichen")):
     return await poe_status(check_hash(hash))
 

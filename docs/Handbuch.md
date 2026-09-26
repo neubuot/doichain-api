@@ -1,13 +1,13 @@
 # Doichain-API – Handbuch
 
-> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 26.09.2026, Version 1.4.0 mit MCP-Server für KI-Agenten). Verweise auf interne Vault-Notizen sind als Klartext belassen.
+> Kopie des Handbuchs aus dem Obsidian-Vault von DOI Labs (Stand 26.09.2026, Version 1.4.1 mit MCP-Server für KI-Agenten). Verweise auf interne Vault-Notizen sind als Klartext belassen.
 
 
 # Doichain-API – Handbuch
 
 ↩️ MOC – Doichain · Einrichtung: Einrichtungsbericht 2026-09-25 – Doichain-API auf doi-btc-node · Offene Punkte: Wiedervorlage 29.09.2026
 
-Stand: Version 1.4.0 vom 26.09.2026 (Version 1.2.0 nach zwei unabhängigen Prüfrunden mit 44 plus 27 eingearbeiteten Befunden, 1.3.0 ergänzt Verifile, Landingpage und den poe-Schlüssel, 1.4.0 den MCP-Server für KI-Agenten, Abschnitt 12).
+Stand: Version 1.4.1 vom 26.09.2026 (Version 1.2.0 nach zwei unabhängigen Prüfrunden mit 44 plus 27 eingearbeiteten Befunden, 1.3.0 ergänzt Verifile, Landingpage und den poe-Schlüssel, 1.4.0 den MCP-Server für KI-Agenten, Abschnitt 12, 1.4.1 die Nachbesserungen aus dessen Prüfrunde).
 
 ## 1. Was die API ist
 
@@ -323,15 +323,15 @@ Einstellungen in der Umgebungsdatei:
 
 Seit Version 1.4.0 gibt es die Doichain auch als Werkzeugkasten für KI-Agenten. Das **Model Context Protocol (MCP)** ist der offene Standard, über den Claude, ChatGPT, Cursor, VS Code und viele andere KI-Anwendungen externe Werkzeuge einbinden. Einmal eingetragen, entscheidet der Agent selbst, wann er welches Werkzeug nutzt. Man sagt ihm einfach „Verankere den Hash von angebot.pdf in der Doichain" oder „Läuft d/beispiel bald ab?".
 
-**Adresse:** `https://doi-api.sendlabs.de/mcp` (Transport Streamable HTTP, keine Anmeldung). Wer dieselbe Adresse im Browser öffnet, bekommt die Landingpage mit Beispielen, Einbau-Anleitung für die gängigen Programme, Werkzeugliste, Sicherheitshinweisen und FAQ (Deutsch und Englisch).
+**Adresse:** `https://doi-api.sendlabs.de/mcp` (Transport Streamable HTTP, keine Anmeldung). Wer dieselbe Adresse im Browser öffnet, bekommt die Landingpage mit Beispielen, Einbauanleitung für die gängigen Programme, Werkzeugliste, Sicherheitshinweisen und FAQ (Deutsch und Englisch).
 
 ### Einbinden
 
 | Programm | So geht es |
 |---|---|
-| Claude Code | `claude mcp add --transport http doichain https://doi-api.sendlabs.de/mcp`, prüfen mit `claude mcp list` |
-| Claude (Web und Desktop) | Einstellungen → Konnektoren → Benutzerdefinierten Konnektor hinzufügen, Name „Doichain", URL eintragen (bezahlte Tarife) |
-| ChatGPT | Einstellungen → Apps und Konnektoren → Erweitert → Entwicklermodus, dann Konnektor erstellen, Authentifizierung „Keine" |
+| Claude Code | `claude mcp add --scope user --transport http doichain https://doi-api.sendlabs.de/mcp` (ohne `--scope user` nur im aktuellen Projekt), prüfen mit `claude mcp list` |
+| Claude (Web und Desktop) | Anpassen → Konnektoren → + → Benutzerdefinierten Konnektor hinzufügen (englisch Customize → Connectors → Add custom connector), Name „Doichain“, URL eintragen. Auch im kostenlosen Tarif (ein eigener Konnektor), in Team und Enterprise richtet ihn ein Owner ein. Im Chat über + → Konnektoren einschalten |
+| ChatGPT | Einstellungen → Sicherheit und Anmeldung → Entwicklermodus einschalten, dann unter Plugins mit + eine App mit der Adresse anlegen, Authentifizierung „Keine“ (nur Plus, Pro, Business, Enterprise, Education im Web) |
 | Cursor | `~/.cursor/mcp.json`: `{"mcpServers": {"doichain": {"url": "https://doi-api.sendlabs.de/mcp"}}}` |
 | VS Code | `.vscode/mcp.json`: `{"servers": {"doichain": {"type": "http", "url": "https://doi-api.sendlabs.de/mcp"}}}` |
 
@@ -341,30 +341,25 @@ Seit Version 1.4.0 gibt es die Doichain auch als Werkzeugkasten für KI-Agenten.
 |---|---|
 | `anchor_proof` | Hash eines Dokuments verankern (einziges schreibendes Werkzeug). Ist der Hash schon verankert, kommt der bestehende Nachweis zurück |
 | `check_proof` | Ist der Hash verankert, seit wann, in welchem Block |
-| `hash_text` | SHA-256 eines Textes, um Aussagen oder Nachrichten zu verankern (Dateien hasht der Agent selbst, zum Beispiel mit `sha256sum`) |
+| `hash_text` | SHA-256 eines kurzen Textes (bis 40.000 Zeichen), um Aussagen oder Nachrichten zu verankern. Der Text geht an den Server, wird dort aber nicht gespeichert. Dateien hasht der Agent selbst, zum Beispiel mit `sha256sum`, dafür braucht er Dateizugriff (Claude Code, Cursor, VS Code). Im reinen Chat ist Verifile der einfachere Weg |
 | `get_anchoring_quota` | verbleibende Nachweise des Tages |
 | `lookup_name`, `get_name_history`, `search_names` | Namen lesen, ihre Historie, Suche nach Präfix |
-| `check_name_expiry` | bis zu 25 Namen auf einmal: aktiv, läuft bald ab, abgelaufen oder frei, mit geschätztem Datum aus dem gemessenen Blockabstand (derzeit gut 9 Minuten) |
+| `check_name_expiry` | bis zu 25 Namen auf einmal: aktiv, läuft bald ab, abgelaufen oder frei. Für aktive Namen ein geschätztes Datum aus dem gemessenen Blockabstand (derzeit gut 9 Minuten), für abgelaufene das echte Ablaufdatum aus der Kette |
 | `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message` | Zustand der Kette, Blöcke, Transaktionen, Adressguthaben, signierte Nachrichten prüfen |
 
 ### Wie es gebaut ist
 
 - Eigener Dienst `doichain-mcp` (Python, MCP-SDK 2.2) unter eigenem Benutzer `doimcp`. Er ruft ausschließlich die REST-API auf und hat keinen Zugriff auf RPC, Wallet oder die Schlüsseldatei der API. Es gibt keine Werkzeuge für Auszahlungen, Namensänderungen oder den RPC-Durchgriff.
-- Verankern nutzt denselben öffentlichen poe-Schlüssel wie Verifile, also dasselbe Tageskontingent: **10 Nachweise je Tag und IP-Adresse, 200 insgesamt**. nginx gibt die Adresse des Aufrufers als `X-Real-IP` mit, der MCP-Server reicht sie an die API weiter. Wer einen eigenen write-Schlüssel im Header `X-API-Key` oder `Authorization: Bearer` mitschickt, hat kein Kontingent.
-- Werte, die Fremde in die Kette geschrieben haben (Namenswerte, Notizen), tragen in den Antworten die Endung `_untrusted` und einen Hinweis. So behandelt ein Agent sie als Daten und nicht als Anweisung (Schutz gegen Prompt-Injection über die Blockchain).
-- Zustandslos mit JSON-Antworten, deshalb unproblematisch hinter nginx und mit zwei Workern. Unterstützt die Protokollversionen 2024-11-05 bis 2026-07-28, getestet mit den offiziellen Clients der SDK-Versionen 1.30 und 2.2.
-- nginx: eigene Ratenzone (5 Anfragen je Sekunde und IP), Anfragen bis 256 KB, `GET /mcp` im Browser zeigt die Landingpage, sonst 405, `/mcp/health` für die Überwachung. Der Server prüft zusätzlich Host und Origin (Schutz gegen DNS-Rebinding).
+- Verankern nutzt denselben öffentlichen poe-Schlüssel wie Verifile, also dasselbe Tageskontingent: **10 Nachweise am Tag je IP-Adresse, für alle zusammen höchstens 200 am Tag**. Gehostete Apps (Claude im Browser, ChatGPT) verbinden sich aus den Rechenzentren ihrer Anbieter, deren Nutzer teilen sich also das Kontingent dieser Adressen. Für regelmäßiges Verankern Claude Code, Cursor oder VS Code nutzen oder einen eigenen Schlüssel vergeben. `check_proof` nennt immer die erste Verankerung, auch wenn ein abgelaufener Nachweis später erneut verankert wurde. nginx gibt die Adresse des Aufrufers als `X-Real-IP` mit, der MCP-Server reicht sie an die API weiter. Wer einen eigenen write-Schlüssel im Header `X-API-Key` mitschickt, hat kein Kontingent (`Authorization: Bearer` wird nur genommen, wenn der Wert wie ein Doichain-Schlüssel aussieht, fremde Token von Gateways werden ignoriert).
+- Namen und Werte, die Fremde in die Kette geschrieben haben, tragen in den Antworten die Endung `_untrusted` und einen Hinweis. So behandelt ein Agent sie als Daten und nicht als Anweisung (Schutz gegen Prompt-Injection über die Blockchain).
+- Zustandslos mit JSON-Antworten, deshalb unproblematisch hinter nginx und mit zwei Workern. Unterstützt die Protokollversionen 2024-11-05 bis 2026-07-28, getestet mit den offiziellen Clients der SDK-Versionen 1.30 und 2.2. Keine JSON-RPC-Batches, keine Clients direkt im Browser (kein CORS). Höchstens sechs gleichzeitige Aufrufe an die REST-API je Worker, Namen fragt der Server eindeutig über `GET /v1/name?name=…` ab.
+- Der Dienst darf nur lokale Verbindungen aufbauen und annehmen (`IPAddressDeny=any`, `IPAddressAllow=localhost`), dazu Systemaufruf-Filter und weitere systemd-Schutzoptionen.
+- nginx: eigene Ratenzone (10 Anfragen je Sekunde und IP, Burst 40), Anfragen bis 256 KB, `GET /mcp` im Browser zeigt die Landingpage, sonst 405 mit `Allow: POST`, eigene Fehlermeldungen im JSON-RPC-Format für 405, 413 und 429, `/mcp/health` für die Überwachung (ebenfalls begrenzt). Der Server prüft zusätzlich Host und Origin (Schutz gegen DNS-Rebinding).
 - `server.json` im Repo ist der vorbereitete Eintrag für das offizielle MCP-Verzeichnis (registry.modelcontextprotocol.io), Veröffentlichung siehe Abschnitt 13.
 
 ## 13. Nächste Schritte
 
-1. **Hostname und echtes Zertifikat.** Sobald ein Name auf 136.243.155.62 zeigt (Empfehlung `api.doi.zone`, bis dahin `doi-api.sendlabs.de` als A-Record im 1blu-KSB), auf dem Server ausführen:
-
-   ```bash
-   certbot --nginx -d api.doi.zone --redirect -m ottmar.neuburger@webanizer.de --agree-tos -n
-   ```
-
-   (bei beiden Namen zusätzlich `-d doi-api.sendlabs.de`). certbot trägt das Zertifikat in den nginx-Block ein und verlängert es automatisch. Danach entfällt `--cacert`, und in `/etc/nginx/sites-available/doichain-api` kann `add_header Strict-Transport-Security "max-age=31536000" always;` ergänzt werden. `api.doi.zone` und `doi-api.sendlabs.de` sind dort bereits als `server_name` eingetragen und im Übergangszertifikat enthalten, ein anderer Name muss an beiden Stellen ergänzt werden. Spätere API-Updates lassen die von certbot bearbeitete nginx-Datei in Ruhe (Abschnitt 11).
+1. **Hostname und Zertifikat.** Erledigt am 25.09.2026 für `doi-api.sendlabs.de` (Let's Encrypt per certbot, automatische Erneuerung, HSTS). Offen ist nur `api.doi.zone`: Sobald David die Zone doi.zone umgezogen hat und der Name auf 136.243.155.62 zeigt, auf dem Server `certbot --nginx -d doi-api.sendlabs.de -d api.doi.zone --expand` ausführen. `api.doi.zone` steht bereits als `server_name` in der nginx-Datei, der MCP-Server erlaubt den Namen ebenfalls. Spätere API-Updates lassen die von certbot bearbeitete nginx-Datei in Ruhe (Abschnitt 11).
 2. **Wallet füllen.** Erledigt am 25.09.2026 (50 DOI an `NGTRDaWzP5o4wky4Uyx2CM5gDQo3Qw3MMn`). Nachfüllen, wenn `GET /v1/wallet` unter etwa 5 DOI meldet, jeder Nachweis kostet rund 0,0105 DOI.
 3. **Erster Nachweis.** Erledigt am 26.09.2026 (README.md und CHANGELOG.md des Repos per API, ein Testnachweis über die Verifile-App). Noch offen: einmal `POST /v1/wallet/send` mit einem Kleinstbetrag an eine eigene Adresse, damit auch die Auszahlung einmal geprüft ist.
 4. **Verifile-Domain.** Erledigt am 26.09.2026: `verifile.it` und `www.verifile.it` zeigen auf 136.243.155.62, Zertifikat per certbot (Erneuerung automatisch), HSTS, www leitet auf verifile.it. Der Installer lässt die certbot-verwaltete nginx-Datei `/etc/nginx/sites-available/verifile` in Ruhe.
