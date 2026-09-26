@@ -1,13 +1,13 @@
-"""Doichain MCP-Server.
+"""Doichain MCP server.
 
-Stellt die oeffentlichen Funktionen der Doichain REST API als Werkzeuge fuer KI-Agenten bereit
-(Model Context Protocol, Transport Streamable HTTP, zustandslos, JSON-Antworten). Laeuft als eigener
-Dienst doichain-mcp.service auf 127.0.0.1:8081 hinter nginx unter /mcp und spricht ausschliesslich mit
-der REST API. Kein Zugriff auf RPC, Wallet oder die Schluesseldatei der API.
+Exposes the public functions of the Doichain REST API as tools for AI agents (Model Context Protocol,
+Streamable HTTP transport, stateless, JSON responses). Runs as its own service on 127.0.0.1:8081 behind
+nginx at /mcp and talks exclusively to the REST API. It has no access to the node's RPC, the wallet or
+the API's key file.
 
-Verankern nutzt den oeffentlichen poe-Schluessel (Tageskontingent je Client-IP, wie die Verifile-App)
-oder einen eigenen Schluessel, den der MCP-Client im Header X-API-Key (oder Authorization: Bearer)
-mitschickt. Die Client-IP kommt aus X-Real-IP (setzt nginx) und geht als X-Forwarded-For an die API.
+Anchoring uses the public poe key (daily quota per client IP, like the Verifile web app) or the caller's
+own key sent in the X-API-Key header (or Authorization: Bearer). The client IP comes from X-Real-IP, which
+nginx sets, and is passed to the API as X-Forwarded-For.
 """
 
 import asyncio
@@ -18,23 +18,22 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 import httpx
-from pydantic import Field
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-
 from mcp.server.mcpserver import Context, Icon, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
+from pydantic import Field
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 VERSION = "1.4.1"
 logger = logging.getLogger("doichain_mcp")
-# Ruhiges Journal: httpx protokolliert sonst jede Anfrage an die REST API, das SDK jede beendete
-# zustandslose Sitzung und jeden Eingabefehler eines Agenten. nginx fuehrt das Zugriffsprotokoll.
+# Quiet logs: otherwise httpx logs every REST call, the SDK every finished stateless session and every
+# input error of an agent. nginx keeps the access log.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("mcp.server.streamable_http").setLevel(logging.WARNING)
 logging.getLogger("mcp.server.streamable_http_manager").setLevel(logging.WARNING)
@@ -103,7 +102,7 @@ mcp = MCPServer(
 
 
 # ---------------------------------------------------------------------------
-# Anbindung an die REST API
+# REST API access
 # ---------------------------------------------------------------------------
 
 STATUS_TEXT = {
@@ -122,7 +121,7 @@ STATUS_TEXT = {
 
 
 class ApiError(ToolError):
-    """Fehlerantwort der REST API, Statuscode bleibt fuer die Werkzeuge abfragbar."""
+    """Error response of the REST API, keeps the status code for the tools."""
 
     def __init__(self, status: int, detail: str):
         summary = STATUS_TEXT.get(status, "Doichain API error")
@@ -131,8 +130,8 @@ class ApiError(ToolError):
 
 
 _client: httpx.AsyncClient | None = None
-# Begrenzt gleichzeitige Aufrufe an die REST API je Worker, damit ein einzelner Agent mit
-# check_name_expiry (bis zu 25 Namen) die Node nicht mit vielen parallelen RPCs belegt.
+# Limits concurrent REST calls per worker, so a single agent calling check_name_expiry (up to 25 names)
+# cannot tie up the node with many parallel RPCs.
 _rest_slots = asyncio.Semaphore(6)
 _cache: dict[tuple, tuple[float, Any]] = {}
 CACHE_MAX = 2000
@@ -154,7 +153,7 @@ def _header(ctx: Context | None, name: str) -> str | None:
         return None
     try:
         headers = ctx.headers
-    except Exception:  # ausserhalb einer HTTP-Anfrage
+    except Exception:  # outside of an HTTP request
         return None
     if not headers:
         return None
@@ -166,8 +165,8 @@ def _header(ctx: Context | None, name: str) -> str | None:
 
 
 def client_ip(ctx: Context | None) -> str | None:
-    """Adresse des Aufrufers aus X-Real-IP. nginx ueberschreibt den Header mit $remote_addr, der Dienst
-    selbst lauscht nur auf 127.0.0.1, deshalb ist der Wert vertrauenswuerdig."""
+    """Caller address from X-Real-IP. nginx overwrites the header with $remote_addr and the service only
+    listens on 127.0.0.1, so the value can be trusted."""
     raw = _header(ctx, "x-real-ip")
     if not raw:
         return None
@@ -178,9 +177,9 @@ def client_ip(ctx: Context | None) -> str | None:
 
 
 def pick_key(ctx: Context | None) -> tuple[str | None, str]:
-    """Schluessel des Aufrufers: X-API-Key hat Vorrang und muss gueltig aussehen. Authorization: Bearer wird
-    nur genommen, wenn es wie ein Doichain-Schluessel aussieht (Gateways schicken dort oft eigene Token, etwa
-    JWTs), sonst gilt der oeffentliche poe-Schluessel."""
+    """The caller's key. X-API-Key wins and must look valid. Authorization: Bearer is only used when it looks
+    like a Doichain key (gateways often send their own tokens there, for example JWTs), otherwise the public
+    poe key applies."""
     key = _header(ctx, "x-api-key")
     if key and key.strip():
         key = key.strip()
@@ -240,13 +239,13 @@ async def api(
     try:
         resp = await _send(method, path, headers, params, body)
         if resp.status_code == 401 and source == "bearer" and POE_KEY:
-            # Fremdes Bearer-Token statt Doichain-Schluessel: mit dem oeffentlichen Schluessel wiederholen.
+            # A foreign bearer token instead of a Doichain key: retry with the public key.
             headers["X-API-Key"] = POE_KEY
             resp = await _send(method, path, headers, params, body)
     except httpx.TimeoutException as exc:
         raise ToolError("The Doichain node did not answer in time, please try again in a minute") from exc
     except httpx.HTTPError as exc:
-        logger.warning("REST API nicht erreichbar: %s", exc)
+        logger.warning("REST API not reachable: %s", exc)
         raise ToolError("The Doichain API is not reachable right now, please try again later") from exc
     try:
         data = resp.json()
@@ -264,7 +263,7 @@ async def api(
 
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helpers
 # ---------------------------------------------------------------------------
 
 def norm_hash(value: str, what: str = "sha256") -> str:
@@ -309,8 +308,8 @@ _avg_cache: tuple[float, float] | None = None
 
 
 async def avg_block_minutes(ctx: Context | None) -> float:
-    """Mittlerer Blockabstand der letzten 1000 Bloecke, 15 Minuten zwischengespeichert. Faellt auf das
-    Protokollziel von 10 Minuten zurueck, wenn die Kette nicht lesbar ist."""
+    """Average block interval over the last 1000 blocks, cached for 15 minutes. Falls back to the protocol
+    target of 10 minutes when the chain cannot be read."""
     global _avg_cache
     now = time.time()
     if _avg_cache and now - _avg_cache[0] < 900:
@@ -330,13 +329,13 @@ async def avg_block_minutes(ctx: Context | None) -> float:
 
 
 async def expiry_fields(expires_in: Any, last_height: Any, minutes: float, ctx: Context | None) -> dict[str, Any]:
-    """Kuenftiger Ablauf wird aus dem gemessenen Blockabstand geschaetzt. Ein abgelaufener Name lief bei Block
-    last_height + 36000 ab, dessen echte Zeit steht in der Kette."""
+    """A future expiry is estimated from the measured block interval. An expired name expired at block
+    last_height + 36000, whose real time is read from the chain."""
     if not isinstance(expires_in, int):
         return {}
     if expires_in > 0:
         delta = timedelta(minutes=expires_in * minutes)
-        when = datetime.now(timezone.utc) + delta
+        when = datetime.now(UTC) + delta
         return {
             "expires_in_blocks": expires_in,
             "estimated_expiry_utc": when.strftime("%Y-%m-%dT%H:%MZ"),
@@ -409,7 +408,7 @@ async def proof_status(digest: str, ctx: Context | None) -> dict[str, Any]:
     if data.get("exists"):
         record = data.get("value_json") if isinstance(data.get("value_json"), dict) else parse_record(data.get("value"))
         first = data.get("first_anchored") if isinstance(data.get("first_anchored"), dict) else {}
-        # Nachweiszeitpunkt ist die erste Verankerung, auch wenn der Hash nach Ablauf erneut verankert wurde.
+        # The proof time is the first anchoring, even if the hash was anchored again after expiring.
         result.update(
             {
                 "block_height": first.get("height", data.get("height")),
@@ -437,7 +436,7 @@ async def proof_status(digest: str, ctx: Context | None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Werkzeuge
+# Tools
 # ---------------------------------------------------------------------------
 
 @mcp.tool(title="Doichain network status", annotations=READ_ONLY)
@@ -806,7 +805,7 @@ async def verify_message(
 
 
 # ---------------------------------------------------------------------------
-# HTTP-Anwendung
+# HTTP application
 # ---------------------------------------------------------------------------
 
 _health_cache: tuple[float, bool] | None = None
@@ -814,7 +813,7 @@ _health_cache: tuple[float, bool] | None = None
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request) -> JSONResponse:
-    """Fuer die Ueberwachung. Das Ergebnis der API-Pruefung wird 15 Sekunden zwischengespeichert."""
+    """For monitoring. The result of the API check is cached for 15 seconds."""
     global _health_cache
     now = time.time()
     if _health_cache and now - _health_cache[0] < 15:

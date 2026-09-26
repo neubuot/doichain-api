@@ -252,8 +252,13 @@ ihre Nutzer teilen sich deshalb das Kontingent dieser Adressen. Namen und Werte 
 und nicht als Anweisung behandeln. `GET /mcp` ohne `text/html` beantwortet nginx mit 405 (kein SSE-Strom im
 zustandslosen Betrieb), Browser bekommen die Landingpage. Gesundheitsprüfung: `GET /mcp/health`.
 Unterstützte Protokollversionen: 2024-11-05 bis 2026-07-28, keine JSON-RPC-Batches, keine Clients direkt im Browser (kein CORS).
-Namen fragt der MCP-Server über `GET /v1/name?name=…` ab, weil Namen mit `/history` am Ende im Pfadformat mehrdeutig sind. `server.json` enthält den Eintrag für das
-offizielle MCP-Verzeichnis (registry.modelcontextprotocol.io), veröffentlicht wird er mit `mcp-publisher`.
+Namen fragt der MCP-Server über `GET /v1/name?name=…` ab, weil Namen mit `/history` am Ende im Pfadformat mehrdeutig sind.
+
+**Öffentliches Repo und MCP-Verzeichnis:** Der MCP-Server ist zusätzlich öffentlich unter
+**https://github.com/neubuot/doichain-mcp** (MIT-Lizenz, englische README, Werkzeugreferenz, Tests, CI) und im offiziellen
+MCP-Verzeichnis als `io.github.neubuot/doichain` eingetragen. `server.json`, README und Workflows pflegt das öffentliche Repo,
+`server.py`, Landingpage und systemd-Unit dieses Repo. Abgleich mit `bash deploy/sync-public-mcp.sh`, eine neue Version
+im Verzeichnis entsteht durch einen Tag `vX.Y.Z` im öffentlichen Repo (GitHub Actions mit OIDC).
 
 ## Betrieb
 
@@ -297,6 +302,7 @@ web/
 deploy/
   install.sh                 idempotenter Installer (Benutzer, venv, Zertifikat, env, systemd, nginx, Web-Oberflächen)
   push-to-server.sh          Arbeitsverzeichnis hochladen und Installer ausführen
+  sync-public-mcp.sh         MCP-Server mit dem öffentlichen Repo neubuot/doichain-mcp abgleichen
   doichain-api.service       systemd-Unit (gehärtet, StateDirectory)
   doichain-mcp.service       systemd-Unit des MCP-Servers (eigener Benutzer doimcp)
   nginx-doichain-api.conf    TLS, Ratenbegrenzung, Body-Grenzen, JSON-Fehlerseiten, Landingpage und /poe/
@@ -307,7 +313,6 @@ docs/
   doichain-api-selfsigned.crt  Übergangszertifikat der Produktivinstanz
 requirements.txt             Abhängigkeiten der API
 requirements-mcp.txt         Abhängigkeiten des MCP-Servers (eigene venv)
-server.json                  Eintrag für das offizielle MCP-Verzeichnis
 CHANGELOG.md
 ```
 

@@ -15,7 +15,7 @@ Kurze Prüfrunde des MCP-Servers (drei Prüfer, ein Gegenprüfer, 41 Meldungen, 
 - systemd: `doichain-mcp` nur noch mit lokalen Verbindungen (`IPAddressDeny=any`, `IPAddressAllow=localhost`), Systemaufruf-Filter, keine Capabilities, weitere Schutzoptionen.
 - Landingpage: aktuelle Menüpfade für Claude (Anpassen → Konnektoren, auch im kostenlosen Tarif) und ChatGPT (Entwicklermodus unter Sicherheit und Anmeldung, bezahlte Tarife), `claude mcp add --scope user`, ehrliche Angaben zu `hash_text`, Kontingent, Protokollen und Browser-Clients, neuer FAQ-Punkt zu gehosteten Apps, Reiter mit Tastatur und ARIA, Titel ohne Halbgeviertstrich.
 - Alle drei Seiten (API, Verifile, MCP) ohne Google Fonts, sie nutzen Systemschriften.
-- `server.json` auf das aktuelle Schema 2025-12-11.
+- MCP-Server zusätzlich als öffentliches Repo https://github.com/neubuot/doichain-mcp (MIT) mit englischer README, Werkzeugreferenz, Anleitung zum Selbstbetrieb, Offline-Tests, CI und Veröffentlichung im offiziellen MCP-Verzeichnis (`io.github.neubuot/doichain`) per GitHub Actions. `server.json` liegt nur noch dort, Abgleich per `deploy/sync-public-mcp.sh`. Code-Kommentare in `server.py` auf Englisch.
 - Bewusst belassen: Das SDK meldet leere Prompt- und Ressourcenlisten als Fähigkeiten an, und JSON-RPC-Batches lehnt es ab. Beides ist Standardverhalten des MCP-SDK 2.2 und für Clients unschädlich.
 
 ## 1.4.0 (2026-09-26)

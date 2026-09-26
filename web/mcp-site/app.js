@@ -75,6 +75,7 @@
     "faq.q6": "Is there a way without AI?", "faq.a6": 'Yes. <a href="https://verifile.it/">Verifile</a> is the drag-and-drop web app, the <a href="/">Doichain REST API</a> the interface for your own programs.',
     "links.api": "The interface behind this server, with a playground", "links.docs": "Try every REST API endpoint",
     "links.verifile": "Proofs by drag and drop in the browser", "links.mcp": "Specification and clients of the protocol",
+    "links.github": "Source code, tool reference and self-hosting guide (MIT license)",
     "foot.imprint": "Legal notice", "foot.by": "A DOI Labs service built on the Doichain. No cookies, no tracking."
   };
   var DE = { "copy": "Kopieren", "copied": "Kopiert" };
