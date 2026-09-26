@@ -355,7 +355,7 @@ Seit Version 1.4.0 gibt es die Doichain auch als Werkzeugkasten für KI-Agenten.
 - Zustandslos mit JSON-Antworten, deshalb unproblematisch hinter nginx und mit zwei Workern. Unterstützt die Protokollversionen 2024-11-05 bis 2026-07-28, getestet mit den offiziellen Clients der SDK-Versionen 1.30 und 2.2. Keine JSON-RPC-Batches, keine Clients direkt im Browser (kein CORS). Höchstens sechs gleichzeitige Aufrufe an die REST-API je Worker, Namen fragt der Server eindeutig über `GET /v1/name?name=…` ab.
 - Der Dienst darf nur lokale Verbindungen aufbauen und annehmen (`IPAddressDeny=any`, `IPAddressAllow=localhost`), dazu Systemaufruf-Filter und weitere systemd-Schutzoptionen.
 - nginx: eigene Ratenzone (10 Anfragen je Sekunde und IP, Burst 40), Anfragen bis 256 KB, `GET /mcp` im Browser zeigt die Landingpage, sonst 405 mit `Allow: POST`, eigene Fehlermeldungen im JSON-RPC-Format für 405, 413 und 429, `/mcp/health` für die Überwachung (ebenfalls begrenzt). Der Server prüft zusätzlich Host und Origin (Schutz gegen DNS-Rebinding).
-- `server.json` im Repo ist der vorbereitete Eintrag für das offizielle MCP-Verzeichnis (registry.modelcontextprotocol.io), Veröffentlichung siehe Abschnitt 13.
+- Öffentliches Repo https://github.com/neubuot/doichain-mcp, Eintrag im offiziellen MCP-Verzeichnis `io.github.neubuot/doichain` seit 26.09.2026 (Abschnitt 13, Punkt 8).
 
 ## 13. Nächste Schritte
 
@@ -366,7 +366,7 @@ Seit Version 1.4.0 gibt es die Doichain auch als Werkzeugkasten für KI-Agenten.
 5. **Datenschutzhinweis** für Verifile und Landingpage (beide setzen keine Cookies und laden nichts von Dritten, ein kurzer Hinweis genügt). Das Impressum beider Seiten verlinkt seit 26.09.2026 auf https://www.doichain.org/en/imprint/, der DOI-Labs-Link auf https://www.doichain.org/en/.
 6. **David informieren** (Gmail-Entwurf „doi-btc-node: Node auf v31.1.6 und neue REST-API" liegt bereit).
 7. Optional: `DOI_PUBLIC_READ=false` setzen und Leseschlüssel vergeben, wenn die API nicht öffentlich lesbar sein soll.
-8. **MCP-Server bekannt machen** (nur nach Freigabe durch Ottmar, weil es eine Veröffentlichung ist): Eintrag im offiziellen MCP-Verzeichnis mit `mcp-publisher login github` (Anmeldung als GitHub-Konto `neubuot`) und `mcp-publisher publish` im Repo-Ordner, der Name `io.github.neubuot/doichain` steht in `server.json`. Danach optional Smithery und das Konnektor-Verzeichnis von Anthropic.
+8. **MCP-Server bekannt machen.** Erledigt am 26.09.2026: öffentliches Repo **https://github.com/neubuot/doichain-mcp** (MIT, README englisch und deutsch, Werkzeugreferenz, Anleitung zum Selbstbetrieb, 21 Offline-Tests, CI für Python 3.11 bis 3.13, 14 Themen-Tags, vertrauliche Sicherheitsmeldungen aktiv, Release v1.4.1) und Eintrag im offiziellen MCP-Verzeichnis als `io.github.neubuot/doichain` (Status aktiv). Neue Versionen: im öffentlichen Repo Version in `pyproject.toml`, `server.json`, `doichain_mcp/__init__.py` und `server.py` anheben, Tag `vX.Y.Z` pushen, der Workflow veröffentlicht per GitHub-OIDC ohne gespeicherten Schlüssel. Den Code gleicht `deploy/sync-public-mcp.sh` im privaten Repo ab. Optional später: Smithery, Glama, mcp.so (übernehmen Einträge teils automatisch) und das Konnektor-Verzeichnis von Anthropic (Antrag nötig).
 
 ## 14. Sicherheit in Kürze
 
