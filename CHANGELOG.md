@@ -13,6 +13,7 @@ Web-Oberflächen und öffentlicher Nachweis-Schlüssel.
 - Erste echte Nachweise auf der Produktivinstanz (README.md und CHANGELOG.md dieses Repos, 26.09.2026).
 - Verifile seit 26.09.2026 unter https://verifile.it/ (A-Records im 1blu-KSB, Let's Encrypt per certbot, HSTS, www leitet auf den Hauptnamen).
 - Nachbesserung nach der dritten Prüfrunde (26.09.2026): hash-wasm wird selbst ausgeliefert (`web/verifile/vendor`, SHA-384 gegen die CDN-Fassung geprüft), CSP mit `'wasm-unsafe-eval'` und ohne CDN, Rückfall auf Web Crypto bei Bibliotheksfehlern, Dateiname geht nur noch mit gesetztem Häkchen auf die Kette, alle API-Werte in der Anzeige maskiert, Kontingent wird bei fehlgeschlagener Verankerung zurückgegeben, öffentliche Nachweise pausieren unter 5 DOI Wallet-Reserve, IPv6 je /64, atomare Zählung (`BEGIN IMMEDIATE`), `config.js` ohne Cache, `/poe` leitet auf `/poe/`, Fortschrittsanzeige sichtbar, leere Dateien abgewiesen, 409/429 sauber behandelt, Polling bis 6 Stunden, Live-Regionen für Screenreader. Hinweis: Die am 26.09. verankerten Hashes von README.md und CHANGELOG.md gehören zum Stand des ersten 1.3.0-Commits, spätere Änderungen an den Dateien ergeben andere Hashes.
+- Nachtrag 26.09.2026: Impressum beider Seiten zeigt auf https://www.doichain.org/en/imprint/, der DOI-Labs-Link auf https://www.doichain.org/en/ (der frühere Verweis auf doi-labs.li ist entfallen).
 
 ## 1.2.0 (2026-09-25)
 

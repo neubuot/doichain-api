@@ -326,7 +326,7 @@ Einstellungen in der Umgebungsdatei:
 2. **Wallet füllen.** Erledigt am 25.09.2026 (50 DOI an `NGTRDaWzP5o4wky4Uyx2CM5gDQo3Qw3MMn`). Nachfüllen, wenn `GET /v1/wallet` unter etwa 5 DOI meldet, jeder Nachweis kostet rund 0,0105 DOI.
 3. **Erster Nachweis.** Erledigt am 26.09.2026 (README.md und CHANGELOG.md des Repos per API, ein Testnachweis über die Verifile-App). Noch offen: einmal `POST /v1/wallet/send` mit einem Kleinstbetrag an eine eigene Adresse, damit auch die Auszahlung einmal geprüft ist.
 4. **Verifile-Domain.** Erledigt am 26.09.2026: `verifile.it` und `www.verifile.it` zeigen auf 136.243.155.62, Zertifikat per certbot (Erneuerung automatisch), HSTS, www leitet auf verifile.it. Der Installer lässt die certbot-verwaltete nginx-Datei `/etc/nginx/sites-available/verifile` in Ruhe.
-5. **Impressum und Datenschutz** für Verifile und Landingpage (derzeit Link auf https://doi-labs.li/impressum, Zieladresse prüfen).
+5. **Datenschutzhinweis** für Verifile und Landingpage (beide setzen keine Cookies und laden nichts von Dritten, ein kurzer Hinweis genügt). Das Impressum beider Seiten verlinkt seit 26.09.2026 auf https://www.doichain.org/en/imprint/, der DOI-Labs-Link auf https://www.doichain.org/en/.
 6. **David informieren** (Gmail-Entwurf „doi-btc-node: Node auf v31.1.6 und neue REST-API" liegt bereit).
 7. Optional: `DOI_PUBLIC_READ=false` setzen und Leseschlüssel vergeben, wenn die API nicht öffentlich lesbar sein soll.
 
