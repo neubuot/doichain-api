@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 PUB=${1:-../doichain-mcp}
 [ -d "$PUB/.git" ] || { echo "Kein Git-Klon unter $PUB"; exit 1; }
 cp doichain_mcp/server.py "$PUB/doichain_mcp/server.py"
-rsync -a --delete web/mcp-site/ "$PUB/web/mcp-site/"
+# Without rsync (Git Bash on Windows) as well: replace the folder completely.
+rm -rf "$PUB/web/mcp-site" && cp -r web/mcp-site "$PUB/web/mcp-site"
 cp deploy/doichain-mcp.service "$PUB/deploy/doichain-mcp.service"
 echo "Abgeglichen. Versionen: $(grep -m1 '^VERSION' doichain_mcp/server.py) / $(grep -m1 '"version"' "$PUB/server.json")"
 git -C "$PUB" status --short

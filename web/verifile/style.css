@@ -147,3 +147,6 @@ details p { color: var(--muted); margin: 10px 0 4px; }
   .print-sheet .print-note { color: #444; font-size: .9rem; margin-top: 24px; }
   .print-sheet .print-date { color: #777; font-size: .85rem; }
 }
+
+/* Longer status texts ("Name abgelaufen, Nachweis gültig") may wrap on narrow phones. */
+@media (max-width: 400px) { .badge { white-space: normal; } }

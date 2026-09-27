@@ -1,0 +1,3 @@
+# Nur fuer die Tests (python -m pytest tests), auf dem Server nicht noetig
+-r requirements.txt
+pytest>=8

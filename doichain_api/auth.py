@@ -76,4 +76,12 @@ def require(level: str):
             )
         raise HTTPException(status_code=403, detail=f"Dieser Aufruf braucht einen Schluessel der Stufe '{level}'")
 
+    # Stufe am Callable vermerken, damit main.py im OpenAPI-Schema die oeffentlich lesbaren Routen erkennt.
+    dependency.auth_level = level  # type: ignore[attr-defined]
     return dependency
+
+
+def auth_level_of(call: object) -> str | None:
+    """Stufe einer mit require() erzeugten Dependency, sonst None."""
+    level = getattr(call, "auth_level", None)
+    return level if level in LEVELS else None

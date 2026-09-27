@@ -6,6 +6,7 @@ Proof of Existence (PoE) und Wallet-Funktionen. Interaktive Doku unter /docs.
 """
 
 import hashlib
+import ipaddress
 import json
 import logging
 import re
@@ -20,11 +21,12 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Path, Query, Re
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import quota
-from .auth import LEVELS, require
+from .auth import LEVELS, auth_level_of, require
 from .config import settings
 from .electrum import AddressError, ElectrumError, electrum_call, scripthash_for_address
 from .rpc import NodeUnavailable, RPCError, rpc
@@ -38,6 +40,9 @@ SAT = Decimal("0.00000001")
 ENCODINGS = "^(ascii|utf8|hex)$"
 # Bloecke kommen im Mittel alle zehn Minuten. Ist der beste Block aelter als das, gilt die Kette als stehend.
 MAX_TIP_AGE_SECONDS = 3 * 3600
+# Ablauftiefe der Namen, die Doichain Core von Namecoin erbt: Ein Name laeuft so viele Bloecke nach seiner
+# letzten Operation ab und kann danach von jedem neu registriert werden.
+NAME_EXPIRY_BLOCKS = 36000
 
 
 # ---------------------------------------------------------------------------
@@ -398,33 +403,99 @@ def build_poe_value(hash_hex: str, filename: str | None, note: str | None) -> st
     return encoded
 
 
-async def first_registration(name: str, entry: dict, current_tx: dict) -> dict:
-    """Erste Registrierung eines Namens laut name_history. Ein abgelaufener und spaeter erneut verankerter
-    Nachweis zaehlt ab dem ersten Zeitpunkt, deshalb liefert poe_status diesen Block zusaetzlich."""
-    first = {
-        "txid": entry["txid"],
-        "height": entry.get("height"),
-        "block_time": current_tx.get("blocktime"),
-        "block_time_iso": iso(current_tx.get("blocktime")),
-        "confirmations": current_tx.get("confirmations", 0),
-        "explorer_tx": explorer_link("tx", entry["txid"]),
+def parse_value_json(value: Any) -> dict | None:
+    """Namenswert als JSON-Objekt lesen (PoE-Werte sind JSON-Objekte). Andere JSON-Typen und ungueltiges JSON
+    ergeben None, damit value_json immer ein Objekt oder null ist."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def operation_fields(op: dict, tx: dict) -> dict:
+    """Felder einer Namensoperation (Eintrag aus name_show oder name_history) zusammen mit Block und Zeit
+    ihrer Transaktion. Alle Felder stammen aus derselben Operation, damit nichts aus zwei Registrierungen
+    gemischt wird."""
+    value = op.get("value")
+    return {
+        "txid": op["txid"],
+        "height": op.get("height"),
+        "block_hash": tx.get("blockhash"),
+        "block_time": tx.get("blocktime"),
+        "block_time_iso": iso(tx.get("blocktime")),
+        "confirmations": tx.get("confirmations", 0),
+        "value": value if isinstance(value, str) else None,
+        "value_json": parse_value_json(value),
+        "owner_address": op.get("address"),
+        "explorer_tx": explorer_link("tx", op["txid"]),
     }
+
+
+def registration_start_index(history: list[dict]) -> int | None:
+    """Index des Eintrags in name_history (aelteste Operation zuerst), mit dem die aktuelle Registrierung
+    begann, falls sie eine Neuregistrierung nach Ablauf ist. Ein Name laeuft NAME_EXPIRY_BLOCKS nach seiner
+    letzten Operation ab. Liegen zwischen zwei Operationen mindestens so viele Bloecke, war der Name dazwischen
+    frei und die spaetere Operation ist eine neue Registrierung, moeglicherweise durch jemand anderen.
+    Aktualisierungen und Verlaengerungen durch den Inhaber vor dem Ablauf zaehlen nicht. None, wenn der Name
+    seit der ersten Registrierung durchgehend gehalten wurde."""
+    start = None
+    for i in range(1, len(history)):
+        previous, current = history[i - 1].get("height"), history[i].get("height")
+        if isinstance(previous, int) and isinstance(current, int) and current - previous >= NAME_EXPIRY_BLOCKS:
+            start = i
+    return start
+
+
+async def registration_info(name: str, entry: dict, current_tx: dict) -> dict:
+    """Erste Verankerung und Beginn der aktuellen Registrierung laut name_history.
+
+    Ein abgelaufener Name kann spaeter erneut registriert werden, auch von jemand anderem. Der Nachweiszeitpunkt
+    ist die erste Verankerung, Inhaber und Wert der aktuellen Operation gehoeren dann aber zur spaeteren
+    Registrierung. Deshalb beschreibt first_anchored die erste Operation vollstaendig (Block, Zeit, Wert,
+    Inhaber), und reregistered_after_expiry sagt, ob die aktuellen Felder aus einer Neuregistrierung stammen.
+    Zusaetzliche RPC-Aufrufe: name_history und hoechstens zwei getrawtransaction."""
+    current = operation_fields(entry, current_tx)
     try:
         history = await rpc.call("name_history", name, name_options())
     except RPCError:
-        return {**first, "registrations": None}
-    if history and history[0].get("txid") and history[0]["txid"] != entry["txid"]:
-        oldest = history[0]
-        tx0 = await rpc.call("getrawtransaction", oldest["txid"], True)
-        first = {
-            "txid": oldest["txid"],
-            "height": oldest.get("height"),
-            "block_time": tx0.get("blocktime"),
-            "block_time_iso": iso(tx0.get("blocktime")),
-            "confirmations": tx0.get("confirmations", 0),
-            "explorer_tx": explorer_link("tx", oldest["txid"]),
+        # Ohne -namehistory ist nur die aktuelle Operation bekannt. Sie kann auch eine spaetere Registrierung sein,
+        # deshalb bleibt der Inhaber der ersten Verankerung unbekannt (null), registrations null zeigt das an.
+        return {
+            "first_anchored": {**current, "owner_address": None, "registrations": None},
+            "reregistered_after_expiry": False,
+            "current_registration_start": None,
         }
-    return {**first, "registrations": len(history) if history else 1}
+    history = [h for h in (history or []) if isinstance(h, dict) and h.get("txid")]
+    txs: dict[str, dict] = {entry["txid"]: current_tx}
+
+    async def tx_of(txid: str) -> dict:
+        if txid not in txs:
+            txs[txid] = await rpc.call("getrawtransaction", txid, True)
+        return txs[txid]
+
+    first = current
+    if history and history[0]["txid"] != entry["txid"]:
+        oldest = history[0]
+        first = operation_fields(oldest, await tx_of(oldest["txid"]))
+    start_index = registration_start_index(history)
+    current_start = None
+    if start_index is not None:
+        start = history[start_index]
+        start_tx = await tx_of(start["txid"])
+        current_start = {
+            "txid": start["txid"],
+            "height": start.get("height"),
+            "block_time_iso": iso(start_tx.get("blocktime")),
+            "explorer_tx": explorer_link("tx", start["txid"]),
+        }
+    return {
+        "first_anchored": {**first, "registrations": len(history) if history else 1},
+        "reregistered_after_expiry": start_index is not None,
+        "current_registration_start": current_start,
+    }
 
 
 async def poe_status(hash_hex: str) -> dict:
@@ -437,12 +508,7 @@ async def poe_status(hash_hex: str) -> dict:
     if entry:
         tx = await rpc.call("getrawtransaction", entry["txid"], True)
         value = entry.get("value")
-        value_json = None
-        if isinstance(value, str):
-            try:
-                value_json = json.loads(value)
-            except ValueError:
-                value_json = None
+        registrations = await registration_info(name, entry, tx)
         result.update(
             {
                 "txid": entry["txid"],
@@ -457,11 +523,13 @@ async def poe_status(hash_hex: str) -> dict:
                 "expired": entry.get("expired"),
                 "expires_in": entry.get("expires_in"),
                 "value": value,
-                "value_json": value_json,
+                "value_json": parse_value_json(value),
                 "explorer_tx": explorer_link("tx", entry["txid"]),
-                "first_anchored": await first_registration(name, entry, tx),
+                **registrations,
             }
         )
+    result.setdefault("reregistered_after_expiry", False)
+    result.setdefault("current_registration_start", None)
     if pending:
         result["pending_ops"] = [{"txid": p.get("txid"), "op": p.get("op"), "address": p.get("address"), "value": p.get("value"), "explorer_tx": explorer_link("tx", p.get("txid", ""))} for p in pending]
     return result
@@ -471,10 +539,43 @@ async def poe_status(hash_hex: str) -> dict:
 # Modelle
 # ---------------------------------------------------------------------------
 
+REANCHOR_DESCRIPTION = (
+    "Nur fuer abgelaufene Namen: true registriert den Hash bewusst neu. Der fruehere Nachweis bleibt in der "
+    "Kettenhistorie gueltig, die neue Registrierung fuegt nur einen spaeteren Zeitstempel hinzu und ersetzt Notiz "
+    "und Inhaber des Namens. Ohne true antwortet die API bei einem abgelaufenen Hash mit 409. Bei aktiven oder "
+    "wartenden Nachweisen ohne Wirkung (dort immer 409)."
+)
+
+POE_STATUS_DESCRIPTION = (
+    "status ist unknown (nie registriert), pending (Operation wartet im Mempool), confirmed (aktiv in der Kette) "
+    "oder expired (Registrierung abgelaufen, der Nachweis bleibt in der Kettenhistorie gueltig). "
+    "Die Felder auf oberster Ebene (txid, height, block_time, owner_address, value, expires_in) beschreiben die "
+    "aktuelle Operation des Namens. first_anchored beschreibt die erste Verankerung vollstaendig mit Block, "
+    "Blockhash, Zeit, Wert (value, value_json) und Inhaberadresse (owner_address). Sie ist der eigentliche "
+    "Nachweiszeitpunkt. reregistered_after_expiry ist true, wenn der Name nach einem Ablauf neu registriert wurde, "
+    "moeglicherweise von jemand anderem. Dann gehoeren Inhaber und Notiz auf oberster Ebene zu dieser spaeteren "
+    "Registrierung und nicht zum ersten Verankerer, current_registration_start nennt deren Beginn (txid, height, "
+    "block_time_iso, explorer_tx). Aktualisierungen oder Verlaengerungen durch den Inhaber vor dem Ablauf zaehlen "
+    "nicht als Neuregistrierung. Ist first_anchored.registrations null, war die Namenshistorie nicht verfuegbar. "
+    "Dann beschreibt first_anchored die aktuelle Operation, die auch eine spaetere Registrierung sein kann, "
+    "first_anchored.owner_address ist null und reregistered_after_expiry ist false, weil es nicht bestimmbar ist."
+)
+
+POE_CREATE_DESCRIPTION = (
+    "Verankert poe/<hash> per name_doi mit dem Node-Wallet. Ist der Hash schon aktiv verankert (confirmed) oder "
+    "wartet eine Operation im Mempool (pending), antwortet die API mit 409. Ist die Registrierung abgelaufen "
+    "(expired), ebenfalls mit 409, denn der fruehere Nachweis bleibt in der Kettenhistorie gueltig und eine neue "
+    "Registrierung fuegt nur einen spaeteren Zeitstempel hinzu und ersetzt Notiz und Inhaber des Namens. "
+    "Mit reanchor=true wird ein abgelaufener Hash bewusst neu registriert, die Antwort enthaelt dann "
+    "reanchored_after_expiry:true und das aeltere Feld renewed mit demselben Wert. Der Nachweiszeitpunkt bleibt "
+    "die erste Verankerung (first_anchored in GET /v1/poe/{hash})."
+)
+
 class PoeCreate(BaseModel):
     hash: str = Field(..., description="SHA-256 der Datei, 64 Hex-Zeichen", examples=["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"])
     filename: str | None = Field(None, max_length=80, description="Optionaler Dateiname, hoechstens 80 Zeichen (wird oeffentlich im Wert gespeichert)")
     note: str | None = Field(None, max_length=160, description="Optionale Notiz, hoechstens 160 Zeichen (oeffentlich auf der Kette)")
+    reanchor: bool = Field(False, description=REANCHOR_DESCRIPTION)
 
 
 class PoeVerify(BaseModel):
@@ -759,7 +860,7 @@ async def address_info(
         "script_pubkey": validation.get("scriptPubKey"),
         "balance": sats_to_doi(balance.get("confirmed")),
         "unconfirmed": sats_to_doi(balance.get("unconfirmed")),
-        "note": "Namens-Outputs (0,01 DOI Pfand je Name) zaehlen zum Guthaben, sind aber nur zusammen mit dem Namen ausgebbar",
+        "note": "Namens-Outputs (0,01 DOI je Name) zaehlen zum Guthaben, sind aber nur zusammen mit dem Namen ausgebbar und mit dem Ablauf des Namens verloren",
         "explorer": explorer_link("address", address),
     }
     if with_count:
@@ -976,16 +1077,19 @@ async def send_to_name(body: SendToName):
 
 def client_ip(request: Request) -> str:
     """Client-Adresse fuer das Kontingent. IPv6 wird auf das /64-Praefix zusammengefasst, weil ein Anschluss
-    dort beliebig viele Einzeladressen hat."""
+    dort beliebig viele Einzeladressen hat. IPv4-gemappte IPv6-Adressen (::ffff:a.b.c.d, etwa von einem
+    Dual-Stack-Socket) zaehlen als die enthaltene IPv4-Adresse, sonst teilten sich alle IPv4-Clients ein
+    einziges /64-Kontingent."""
     host = request.client.host if request.client else "unbekannt"
     try:
-        import ipaddress
         addr = ipaddress.ip_address(host)
-        if addr.version == 6:
-            return str(ipaddress.ip_network(f"{host}/64", strict=False).network_address) + "/64"
     except ValueError:
-        pass
-    return host
+        return host
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped is not None:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network((addr.packed, 64), strict=False).network_address) + "/64"
+    return str(addr)
 
 
 # Unter dieser Reserve (DOI, bestaetigt) pausieren die oeffentlichen Nachweise mit poe-Schluessel.
@@ -1009,17 +1113,17 @@ async def poe_quota(request: Request, level: int = Depends(require("poe"))):
     return {"unlimited": False, **quota.usage(client_ip(request))}
 
 
-@app.get("/v1/poe/{hash}", tags=["Proof of Existence"], summary="Nachweis zu einem SHA-256-Hash pruefen", description="status ist unknown (nie registriert), pending (Registrierung wartet im Mempool), confirmed (aktiv in der Kette) oder expired (abgelaufen, Beweis bleibt in der Historie). first_anchored nennt die erste Verankerung (bei einem abgelaufenen und erneut verankerten Hash die fruehere), sie ist der eigentliche Nachweiszeitpunkt.", dependencies=[Depends(require("read"))])
+@app.get("/v1/poe/{hash}", tags=["Proof of Existence"], summary="Nachweis zu einem SHA-256-Hash pruefen", description=POE_STATUS_DESCRIPTION, dependencies=[Depends(require("read"))])
 async def poe_get(hash: str = Path(..., description="SHA-256 der Datei, 64 Hex-Zeichen")):
     return await poe_status(check_hash(hash))
 
 
-@app.post("/v1/poe/verify", tags=["Proof of Existence"], summary="Nachweis pruefen (Hash als JSON)", dependencies=[Depends(require("read"))])
+@app.post("/v1/poe/verify", tags=["Proof of Existence"], summary="Nachweis pruefen (Hash als JSON)", description="Antwort wie GET /v1/poe/{hash}. " + POE_STATUS_DESCRIPTION, dependencies=[Depends(require("read"))])
 async def poe_verify(body: PoeVerify):
     return await poe_status(check_hash(body.hash))
 
 
-@app.post("/v1/poe/verify/file", tags=["Proof of Existence"], summary="Nachweis pruefen (Datei hochladen, Hash wird hier berechnet)", dependencies=[Depends(require("read"))])
+@app.post("/v1/poe/verify/file", tags=["Proof of Existence"], summary="Nachweis pruefen (Datei hochladen, Hash wird hier berechnet)", description="Antwort wie GET /v1/poe/{hash}, ergaenzt um file (Name und Groesse). " + POE_STATUS_DESCRIPTION, dependencies=[Depends(require("read"))])
 async def poe_verify_file(file: UploadFile = File(..., description="Datei bis 50 MB, verlaesst den Server nicht")):
     hash_hex, size = await hash_upload(file)
     result = await poe_status(hash_hex)
@@ -1027,30 +1131,49 @@ async def poe_verify_file(file: UploadFile = File(..., description="Datei bis 50
     return result
 
 
-@app.post("/v1/poe", tags=["Proof of Existence"], summary="Nachweis anlegen (Hash als JSON, poe oder write)", status_code=201)
+@app.post("/v1/poe", tags=["Proof of Existence"], summary="Nachweis anlegen (Hash als JSON, poe oder write)", description=POE_CREATE_DESCRIPTION, status_code=201)
 async def poe_create(body: PoeCreate, request: Request, level: int = Depends(require("poe"))):
-    return await _poe_create(check_hash(body.hash), body.filename, body.note, public=(level == LEVELS["poe"]), ip=client_ip(request))
+    return await _poe_create(check_hash(body.hash), body.filename, body.note, public=(level == LEVELS["poe"]), ip=client_ip(request), reanchor=body.reanchor)
 
 
-@app.post("/v1/poe/file", tags=["Proof of Existence"], summary="Nachweis anlegen (Datei hochladen, poe oder write)", status_code=201)
+@app.post("/v1/poe/file", tags=["Proof of Existence"], summary="Nachweis anlegen (Datei hochladen, poe oder write)", description=POE_CREATE_DESCRIPTION + " reanchor ist hier ein Formularfeld (true oder false).", status_code=201)
 async def poe_create_file(
     request: Request,
     file: UploadFile = File(..., description="Datei bis 50 MB, nur der Hash geht auf die Kette"),
     note: str | None = Form(None, max_length=160, description="Optionale Notiz, hoechstens 160 Zeichen (oeffentlich)"),
+    reanchor: bool = Form(False, description=REANCHOR_DESCRIPTION),
     level: int = Depends(require("poe")),
 ):
     hash_hex, size = await hash_upload(file)
-    result = await _poe_create(hash_hex, file.filename, note, public=(level == LEVELS["poe"]), ip=client_ip(request))
+    result = await _poe_create(hash_hex, file.filename, note, public=(level == LEVELS["poe"]), ip=client_ip(request), reanchor=reanchor)
     result["file"] = {"name": file.filename, "size": size}
     return result
 
 
-async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, public: bool = False, ip: str = "") -> dict:
+async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, public: bool = False, ip: str = "", reanchor: bool = False) -> dict:
     current = await poe_status(hash_hex)
     if current["status"] == "confirmed":
-        raise HTTPException(409, f"Fuer diesen Hash existiert bereits ein Nachweis (Block {current.get('height')}, {current.get('block_time_iso')}), siehe GET /v1/poe/{hash_hex}")
+        # Block und Zeit der ersten Verankerung nennen, nicht die einer spaeteren Neuregistrierung.
+        first = current.get("first_anchored") or {}
+        raise HTTPException(
+            409,
+            f"Fuer diesen Hash existiert bereits ein Nachweis (erste Verankerung in Block {first.get('height') or current.get('height')}, "
+            f"{first.get('block_time_iso') or current.get('block_time_iso')}), siehe GET /v1/poe/{hash_hex}",
+        )
     if current["pending"]:
         raise HTTPException(409, "Fuer diesen Hash wartet bereits eine unbestaetigte Namensoperation im Mempool")
+    expired = current["status"] == "expired"
+    if expired and not reanchor:
+        # Kein stilles Neuregistrieren: Die neue Registrierung wuerde Notiz und Inhaber des Namens ersetzen,
+        # waehrend der Nachweiszeitpunkt die erste Verankerung bleibt.
+        first = current.get("first_anchored") or {}
+        raise HTTPException(
+            409,
+            f"Der Name fuer diesen Hash ist abgelaufen, der fruehere Nachweis bleibt aber in der Kettenhistorie gueltig "
+            f"(erste Verankerung in Block {first.get('height')}, {first.get('block_time_iso')}). "
+            "Eine neue Registrierung fuegt nur einen spaeteren Zeitstempel hinzu und ersetzt Notiz und Inhaber des Namens. "
+            f"Wer das bewusst will, sendet reanchor=true. Details unter GET /v1/poe/{hash_hex}",
+        )
     name = poe_name(hash_hex)
     value = build_poe_value(hash_hex, filename, note)
     remaining = None
@@ -1070,7 +1193,9 @@ async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, 
             "hash": hash_hex,
             "name": name,
             "value": value,
-            "renewed": current["status"] == "expired",
+            "reanchored_after_expiry": expired,
+            # renewed: aelterer Name desselben Feldes, bleibt fuer bestehende Clients erhalten.
+            "renewed": expired,
             "hint": "Nach der ersten Bestaetigung (im Mittel 10 Minuten) liefert GET /v1/poe/<hash> Blockhoehe und Zeitstempel. Erst dann ist der Nachweis endgueltig",
         }
     )
@@ -1100,7 +1225,7 @@ async def wallet_info():
     }
 
 
-@app.get("/v1/wallet/funding-address", tags=["Wallet"], summary="Einzahlungsadresse, um das Wallet mit DOI fuer Gebuehren und Namenspfand zu versorgen", dependencies=[Depends(require("read"))])
+@app.get("/v1/wallet/funding-address", tags=["Wallet"], summary="Einzahlungsadresse, um das Wallet mit DOI fuer Gebuehren und die 0,01 DOI je Name zu versorgen", dependencies=[Depends(require("read"))])
 async def wallet_funding_address():
     addresses: dict = {}
     try:
@@ -1111,7 +1236,7 @@ async def wallet_funding_address():
     if not addresses:
         raise HTTPException(503, "Einzahlungsadresse ist nicht eingerichtet (Label api-funding fehlt im Wallet), bitte deploy/install.sh ausfuehren")
     address = sorted(addresses.keys())[0]
-    return {"address": address, "hint": "Jede Namensoperation bindet 0,01 DOI als Pfand (verfaellt bei Ablauf des Namens) und kostet rund 0,0002 bis 0,0005 DOI Gebuehr", "explorer": explorer_link("address", address)}
+    return {"address": address, "hint": "Jeder Name bindet 0,01 DOI (kein Pfand, mit dem Ablauf des Namens verloren), jede Namensoperation kostet rund 0,0002 bis 0,0005 DOI Gebuehr", "explorer": explorer_link("address", address)}
 
 
 @app.get("/v1/wallet/names", tags=["Wallet"], summary="Namen, die das Wallet haelt (name_list, write)", dependencies=[Depends(require("write"))])
@@ -1222,3 +1347,59 @@ async def generic_rpc(body: RpcCall):
     else:
         result = await rpc.call(method, *body.params, wallet=body.wallet)
     return {"method": method, "result": result}
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI: oeffentlich lesbare Routen kenntlich machen
+# ---------------------------------------------------------------------------
+
+def _auth_levels(dependant: Any) -> set[str]:
+    """Alle mit require() erzeugten Stufen in einem Dependency-Baum."""
+    levels: set[str] = set()
+    for dep in getattr(dependant, "dependencies", []) or []:
+        level = auth_level_of(dep.call)
+        if level:
+            levels.add(level)
+        levels |= _auth_levels(dep)
+    return levels
+
+
+def public_read_operations() -> set[tuple[str, str]]:
+    """(Pfad, Methode) aller Routen im Schema, deren staerkste Schluesselpruefung require("read") ist."""
+    operations: set[tuple[str, str]] = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or not route.include_in_schema:
+            continue
+        levels = _auth_levels(route.dependant)
+        if levels and max(LEVELS[level] for level in levels) == LEVELS["read"]:
+            for method in route.methods or ():
+                operations.add((route.path_format, method.lower()))
+    return operations
+
+
+_base_openapi = app.openapi
+
+
+def openapi_with_public_read() -> dict[str, Any]:
+    """FastAPI traegt bei jeder Route mit Schluessel-Dependency eine Schluesselpflicht ins Schema ein, auch dort,
+    wo require("read") bei DOI_PUBLIC_READ=true ohne Schluessel durchlaesst. Generierte Clients verlangten dann
+    selbst fuer GET /v1/status einen Schluessel. Deshalb bekommen diese Routen die leere Anforderung {} als
+    Alternative. Die Pruefung selbst aendert sich dadurch nicht, poe-, write- und admin-Routen bleiben
+    schluesselpflichtig."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = _base_openapi()
+    if settings.public_read:
+        paths = schema.get("paths", {})
+        for path, method in public_read_operations():
+            operation = paths.get(path, {}).get(method)
+            if not operation:
+                continue
+            security = operation.setdefault("security", [])
+            if {} not in security:
+                security.append({})
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = openapi_with_public_read  # type: ignore[method-assign]

@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.5.0 (2026-09-27)
+
+Korrekturen aus einem externen Review des MCP-Servers (Bericht für Nico Krause vom 27.09.2026, Issues neubuot/doichain-mcp#3 und #4), am Code und am laufenden Dienst gegengeprüft.
+
+- REST-API: `GET /v1/poe/{hash}` liefert in `first_anchored` jetzt auch Blockhash, Wert, `value_json` und Inhaberadresse der ersten Verankerung, dazu `reregistered_after_expiry` und `current_registration_start`. Eine Neuregistrierung nach Ablauf lässt sich damit sauber von einer Aktualisierung durch den Inhaber unterscheiden.
+- REST-API: Ein abgelaufener Hash wird nicht mehr still neu verankert. `POST /v1/poe` und `POST /v1/poe/file` antworten mit 409, außer `reanchor=true` wird bewusst gesendet. Die Antwort nennt dann `reanchored_after_expiry` (und wie bisher `renewed`). Die 409 für einen aktiven Hash nennt Block und Zeit der ersten Verankerung.
+- REST-API: `value_json` ist immer ein Objekt oder null. Ohne Namenshistorie ist `first_anchored.owner_address` null.
+- REST-API: In `/openapi.json` sind Leseendpunkte als ohne Schlüssel nutzbar markiert, solange `DOI_PUBLIC_READ=true` gilt. An der Prüfung der Schlüssel ändert sich nichts.
+- REST-API: IPv4-Adressen in IPv6-Schreibweise (`::ffff:a.b.c.d`) zählen für das Kontingent als IPv4-Adresse.
+- REST-API: Die 0,01 DOI je Name heißen nicht mehr Pfand, sie verfallen beim Ablauf des Namens.
+- MCP 1.5.0: `check_proof` vermischt keine Registrierungen mehr. Oben steht nur die erste Verankerung mit ihrem eigenen Eintrag, eine spätere Registrierung steht in `latest_registration` mit `kind` und Hinweis. `anchor_proof` hat `reanchor_expired` und liefert `reanchored_expired_proof` statt `renewed_expired_proof`. `search_names` hat `include_expired`. `Authorization: Bearer` gilt nur mit `DOI_MCP_ACCEPT_BEARER=true` als Schlüssel. Zwischenspeicher und Schlüssel lassen sich nicht mehr kombinieren. Texte ohne „notary“.
+- Verifile: zeigt Zeitpunkt, Notiz und Dateiname der ersten Verankerung, eine spätere Registrierung als eigene Zeile, der JSON-Export beschreibt die erste Verankerung durchgehend. Erneutes Verankern eines abgelaufenen Namens nur noch bewusst als „Neu verankern (späterer Zeitstempel)“.
+- MCP-Landingpage: ohne „Blockchain-Notar“, genauere Aussagen zu Zeitstempel, Ablauf (36.000 Blöcke, rund 250 Tage) und Eigentum der Nachweise.
+- Tests: neue Testreihe `tests/test_poe.py` für die REST-API (30 Tests), Entwicklungsabhängigkeiten in `requirements-dev.txt`.
+
 ## 1.4.1 (2026-09-26)
 
 Kurze Prüfrunde des MCP-Servers (drei Prüfer, ein Gegenprüfer, 41 Meldungen, alle bestätigt, viele doppelt) eingearbeitet.

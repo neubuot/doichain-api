@@ -13,7 +13,7 @@ Stand: Version 1.4.1 vom 26.09.2026 (Version 1.2.0 nach zwei unabhängigen Prüf
 
 Die Doichain-API ist eine Web-Schnittstelle vor der eigenen Doichain-Node auf dem Hetzner-Server **doi-btc-node**. Jedes Programm, das HTTP spricht (Browser, curl, Python, JavaScript, n8n, DocuSeal-Webhook), kann damit die Doichain nutzen, ohne selbst eine Node zu betreiben oder das JSON-RPC-Protokoll von Doichain Core zu kennen. Sie deckt alle Doichain-Funktionen ab:
 
-- **Proof of Existence (PoE):** den SHA-256-Hash eines Dokuments fälschungssicher auf der Kette verankern und später beweisen, dass das Dokument zu diesem Zeitpunkt existierte.
+- **Proof of Existence (PoE):** den SHA-256-Hash eines Dokuments mit einem Zeitstempel auf der Kette verankern, der sich nachträglich nicht ändern lässt, und später beweisen, dass das Dokument spätestens zu diesem Zeitpunkt existierte.
 - **Namen:** die Namecoin-artigen Namen der Doichain lesen, durchsuchen und mit `name_doi` registrieren, ändern, verlängern oder übertragen.
 - **Kette:** Blöcke, Transaktionen (inklusive dekodierter Namensoperationen), Mempool, Netzwerk.
 - **Adressen:** Guthaben, Historie und unverbrauchte Outputs beliebiger Adressen.
@@ -116,8 +116,10 @@ Als Wert des Namens speichert die API ein kleines JSON:
 
 Regeln der Kette, die man kennen sollte:
 
-- Jeder Name bindet **0,01 DOI als Pfand** im Namens-Output, dazu rund 0,0002 bis 0,0005 DOI Gebühr. Das Pfand bleibt beim Namen und **verfällt, wenn der Name abläuft** (die Node macht den Output dann unspendbar).
-- Ein Name **läuft nach 36.000 Blöcken ab** (bei zehn Minuten je Block rund 250 Tage). Der Eintrag bleibt in der Kette und im Explorer sichtbar und beweiskräftig, aber der Name wird wieder frei. Wer den Nachweis „aktiv" halten will, ruft rechtzeitig `POST /v1/poe` mit demselben Hash oder `POST /v1/name/doi` mit demselben Namen auf. Ist der Name noch aktiv und gehört dem Node-Wallet, wird er aktualisiert und der Ablauf beginnt neu, ist er schon abgelaufen, wird er neu registriert (die Antwort enthält dann `renewed: true`).
+- Jeder Name bindet **0,01 DOI** im Namens-Output, dazu rund 0,0002 bis 0,0005 DOI Gebühr. Die 0,01 DOI bleiben beim Namen und sind **mit dem Ablauf des Namens verloren** (die Node macht den Output dann unspendbar). Sie sind also Kosten und kein Pfand, das zurückfließt.
+- Ein Name **läuft nach 36.000 Blöcken ab** (bei zehn Minuten je Block rund 250 Tage). Der Zeitstempel bleibt in der Kette und im Explorer sichtbar und beweiskräftig, aber der Name wird wieder frei und kann von jedem neu registriert werden, mit eigener Notiz und eigenem Inhaber. `GET /v1/poe/{hash}` nennt deshalb in `first_anchored` immer die erste Verankerung und zeigt eine spätere Neuregistrierung getrennt an (Abschnitt „Antwort beim Prüfen“).
+- **Verlängern** kann einen noch aktiven Nachweis nur der Inhaber, und zwar über `POST /v1/name/doi` (write-Schlüssel) mit demselben Namen und dem bisherigen Wert. Der Ablauf beginnt dann neu. `POST /v1/poe` verlängert nicht: Für einen aktiven Hash antwortet es mit 409. Für einen abgelaufenen Hash ebenfalls mit 409, es sei denn, der Aufruf setzt ausdrücklich `reanchor: true`. Dann entsteht eine neue, spätere Registrierung (die Antwort enthält `reanchored_after_expiry: true`), der ursprüngliche Nachweis bleibt unverändert in der Historie und `first_anchored` verweist weiter auf ihn.
+- Die über die API angelegten Namen `poe/<hash>` gehören dem Node-Wallet von DOI Labs, das die Gebühr und die 0,01 DOI bezahlt. Ein Nachweis zeigt deshalb, dass ein Dokument mit diesem Hash spätestens zu diesem Zeitpunkt existierte, nicht, wer es eingereicht hat.
 - Solange ein Name aktiv ist, kann **nur der Inhaber** ihn ändern (das Wallet der Node, wenn der Eintrag über die API angelegt wurde). Fremde Versuche scheitern an der Node.
 - Ein Nachweis ist **erst nach der ersten Bestätigung endgültig** (nächster Block, im Mittel zehn Minuten). Registrieren zwei Beteiligte denselben freien Namen fast gleichzeitig, gewinnt die zuerst bestätigte Transaktion, die andere wird ungültig. `GET /v1/poe/{hash}` zeigt immer den Kettenzustand, darauf verlassen, nicht auf die Antwort beim Anlegen. Für hohe Ansprüche zwölf Bestätigungen abwarten.
 - Je Name ist nur **eine unbestätigte Operation** erlaubt. Eine zweite vor der Bestätigung meldet 409.
@@ -129,13 +131,15 @@ Regeln der Kette, die man kennen sollte:
 | `GET /v1/poe/{hash}` | read | Nachweis zu einem Hash prüfen |
 | `POST /v1/poe/verify` mit `{"hash": "…"}` | read | dasselbe als POST |
 | `POST /v1/poe/verify/file` (Multipart, Feld `file`) | read | Datei hochladen, Hash wird auf dem Server berechnet und geprüft |
-| `POST /v1/poe` mit `{"hash": "…", "filename": "…", "note": "…"}` | poe oder write | Nachweis anlegen, Hash lokal berechnet. Mit poe-Schlüssel zählt das Tageskontingent, die Antwort enthält dann `quota` |
-| `POST /v1/poe/file` (Multipart, Felder `file` und optional `note`) | poe oder write | Datei hochladen, Hash berechnen, Nachweis anlegen (bis 50 MB) |
+| `POST /v1/poe` mit `{"hash": "…", "filename": "…", "note": "…", "reanchor": false}` | poe oder write | Nachweis anlegen, Hash lokal berechnet. Mit poe-Schlüssel zählt das Tageskontingent, die Antwort enthält dann `quota`. `reanchor` (Standard `false`) nur für abgelaufene Hashes, siehe „Antwort beim Anlegen“ |
+| `POST /v1/poe/file` (Multipart, Felder `file`, optional `note` und `reanchor`) | poe oder write | Datei hochladen, Hash berechnen, Nachweis anlegen (bis 50 MB). `reanchor=true` wie bei `POST /v1/poe` |
 | `GET /v1/poe/quota` | poe | verbleibendes Tageskontingent für die eigene IP-Adresse und insgesamt (`unlimited: true` mit write- oder admin-Schlüssel) |
 
 ### Verifile, die Web-App
 
 Für Endnutzer gibt es die App **Verifile** unter **https://verifile.it/** (eigener nginx-vHost mit Let's Encrypt seit 26.09.2026, `www` leitet auf den Hauptnamen, zusätzlich erreichbar unter https://doi-api.sendlabs.de/poe/): Datei ins Feld ziehen, der Browser berechnet den SHA-256 (gestückelt über die selbst ausgelieferte Bibliothek hash-wasm, damit auch Gigabyte-Dateien gehen, Rückfall auf Web Crypto bis 1 GB), nichts wird hochgeladen. Auf die Kette gehen nur Hash, die optionale Notiz und, nur mit gesetztem Häkchen, der Dateiname. Öffentliche Nachweise pausieren automatisch, wenn das Node-Wallet unter 5 DOI fällt, und ein fehlgeschlagener Versuch kostet kein Kontingent. Die App fragt den Status ab, verankert auf Klick über den poe-Schlüssel, aktualisiert sich alle 30 Sekunden bis zur Bestätigung und liefert den Nachweis als JSON-Datei oder Druckansicht. Ein bekannter Hash lässt sich direkt eingeben oder als `#<hash>` an die Adresse hängen, so werden Nachweise verlinkbar. Sprache Deutsch und Englisch (Schalter oben rechts, Wahl bleibt im Browser gespeichert). Quellcode im Repo unter `web/verifile`, Konfiguration `config.js` erzeugt der Installer aus der Umgebungsdatei. Solange die App unter dem API-Host läuft, gelten die dortigen Sicherheits-Header, auf der eigenen Domain die Vorlage `deploy/nginx-verifile.conf` mit Content-Security-Policy.
+
+Angezeigt, heruntergeladen (JSON) und gedruckt wird immer die erste Verankerung aus `first_anchored`: Blockzeit, Block, Transaktion, Bestätigungen, Explorer-Link sowie Zeitstempel, Notiz und Dateiname aus ihrem Wert. Weicht die aktuelle Transaktion davon ab, zeigt die App das in einer eigenen Zeile an. Wurde der Name nach Ablauf neu registriert, steht dort, dass Notiz und Inhaber der neuen Registrierung nicht zum ursprünglichen Nachweis gehören. Hat der Inhaber den Namen nur aktualisiert, sagt die Zeile das. Der JSON-Nachweis enthält dann zusätzlich das Objekt `latest_registration`. Bei einem abgelaufenen Nachweis erklärt die App, dass der ursprüngliche Nachweis gültig bleibt, und bietet „Neu verankern (späterer Zeitstempel)“ an. Nur dieser Knopf schickt `reanchor: true`.
 
 ### Antwort beim Prüfen
 
@@ -152,15 +156,36 @@ Für Endnutzer gibt es die App **Verifile** unter **https://verifile.it/** (eige
   "owner_address": "N…", "owned_by_this_wallet": true,
   "expired": false, "expires_in": 35995,
   "value": "{\"v\":1,…}", "value_json": {"v": 1, "alg": "sha256", "…": "…"},
-  "explorer_tx": "https://doi-explorer.le-space.de/tx/…"
+  "explorer_tx": "https://doi-explorer.le-space.de/tx/…",
+  "first_anchored": {
+    "txid": "…", "height": 433412, "block_hash": "…",
+    "block_time": 1790360000, "block_time_iso": "2026-09-25T18:13:20Z", "confirmations": 5,
+    "value": "{\"v\":1,…}", "value_json": {"v": 1, "…": "…"}, "owner_address": "N…",
+    "explorer_tx": "https://doi-explorer.le-space.de/tx/…", "registrations": 1
+  },
+  "reregistered_after_expiry": false,
+  "current_registration_start": null
 }
 ```
 
-`status` ist `unknown` (nie registriert), `pending` (Registrierung oder Erneuerung wartet im Mempool, `pending_ops` nennt die Transaktion), `confirmed` (aktiv in der Kette) oder `expired` (abgelaufen, Beweis weiterhin in der Historie). Der Beweis für Dritte besteht aus Hash, `txid`, `height` und `block_time_iso`, alles im Explorer nachprüfbar.
+`status` ist `unknown` (nie registriert), `pending` (Registrierung oder Erneuerung wartet im Mempool, `pending_ops` nennt die Transaktion), `confirmed` (aktiv in der Kette) oder `expired` (abgelaufen, Beweis weiterhin in der Historie). Dieselben Felder liefern `POST /v1/poe/verify` und `POST /v1/poe/verify/file`.
+
+Der Beweis für Dritte ist immer die **erste Verankerung** in `first_anchored`: `txid`, `height`, `block_hash` und `block_time_iso` sind im Explorer nachprüfbar, `value`, `value_json` und `owner_address` zeigen Wert und Inhaber zu diesem Zeitpunkt (`owner_address` ist `null`, wenn die Namenshistorie ihn nicht liefert). `registrations` zählt die Operationen des Namens. Ist es `null`, war die Namenshistorie nicht verfügbar, und `first_anchored` beschreibt nur die aktuelle Operation, die auch eine spätere Registrierung sein kann. Die Felder auf oberster Ebene beschreiben den aktuellen Eintrag des Namens. Hat ein Name nur eine Registrierung, stimmen beide überein.
+
+Nach Ablauf kann jeder denselben Hash neu registrieren. Dann steht `reregistered_after_expiry: true`. Die Felder `owner_address`, `value` und `value_json` auf oberster Ebene gehören in diesem Fall zur neuen Registrierung und nicht zum Nachweis, `current_registration_start` nennt `txid`, `height`, `block_time_iso` und `explorer_tx` der Operation, mit der die neue Registrierung begann. Als Neuregistrierung zählt eine Operation, die mindestens 36.000 Blöcke nach der vorherigen Operation desselben Namens kam. Aktualisierungen oder Verlängerungen durch den Inhaber vor dem Ablauf zählen nicht, dann bleibt `reregistered_after_expiry` bei `false` und `current_registration_start` bei `null`.
 
 ### Antwort beim Anlegen
 
-HTTP 201 mit `txid`, `name`, `value`, `fee`, `status: pending` und dem Explorer-Link. Die API prüft nach dem Aufruf, ob die Node die Transaktion tatsächlich in den Mempool übernommen hat. Hat sie das nicht (zum Beispiel weil der Name in derselben Minute von jemand anderem registriert wurde), verwirft die API die Transaktion im Wallet und meldet 409. Nach dem nächsten Block liefert `GET /v1/poe/{hash}` Blockhöhe und Zeitstempel. Wenn der Hash schon aktiv registriert ist, antwortet die API mit 409 und nennt Block und Zeit des vorhandenen Nachweises, es entsteht kein Doppeleintrag. Wartet bereits eine Registrierung im Mempool, ebenfalls 409.
+HTTP 201 mit `txid`, `name`, `value`, `fee`, `status: pending` und dem Explorer-Link. Die API prüft nach dem Aufruf, ob die Node die Transaktion tatsächlich in den Mempool übernommen hat. Hat sie das nicht (zum Beispiel weil der Name in derselben Minute von jemand anderem registriert wurde), verwirft die API die Transaktion im Wallet und meldet 409. Nach dem nächsten Block liefert `GET /v1/poe/{hash}` Blockhöhe und Zeitstempel. Wenn der Hash schon aktiv registriert ist, antwortet die API mit 409 und nennt Block und Zeit der ersten Verankerung, es entsteht kein Doppeleintrag. Wartet bereits eine Registrierung im Mempool, ebenfalls 409.
+
+**Abgelaufene Nachweise.** Ist der Name des Hashes abgelaufen, antwortet die API ebenfalls mit 409. Der frühere Nachweis bleibt in der Kettenhistorie gültig, die Meldung nennt Block und Zeit der ersten Verankerung. Eine neue Registrierung würde nur einen späteren Zeitstempel hinzufügen und Notiz und Inhaber des Namens ersetzen. Wer das bewusst will, schickt `"reanchor": true` mit (bei `POST /v1/poe/file` als Formularfeld `reanchor=true`):
+
+```bash
+curl -X POST https://doi-api.sendlabs.de/v1/poe -H "X-API-Key: <write-schluessel>" \
+  -H "content-type: application/json" -d '{"hash":"<hash>","reanchor":true}'
+```
+
+Die Antwort enthält dann `reanchored_after_expiry: true` und für ältere Clients weiterhin `renewed` mit demselben Wert. Auf aktive oder wartende Nachweise hat `reanchor` keine Wirkung, dort bleibt es bei 409. Einen aktiven Nachweis verlängert nur der Inhaber über `POST /v1/name/doi` (Abschnitt 5).
 
 ### Beispiel: Nachweis mit Python anlegen und später prüfen
 
@@ -169,9 +194,9 @@ import hashlib, requests
 API, KEY = "https://doi-api.sendlabs.de/v1", "<write-schluessel>"
 h = hashlib.sha256(open("vertrag.pdf", "rb").read()).hexdigest()
 r = requests.post(f"{API}/poe", json={"hash": h, "filename": "vertrag.pdf"}, headers={"X-API-Key": KEY})
-print(r.status_code, r.json())          # 201 und txid, 409 wenn schon vorhanden, 402 wenn das Wallet leer ist
-# später
-print(requests.get(f"{API}/poe/{h}").json()["block_time_iso"])
+print(r.status_code, r.json())          # 201 und txid, 409 wenn schon vorhanden (auch abgelaufen ohne reanchor), 402 wenn das Wallet leer ist
+# später: Nachweiszeitpunkt ist die erste Verankerung
+print(requests.get(f"{API}/poe/{h}").json()["first_anchored"]["block_time_iso"])
 ```
 
 ## 5. Namen und `name_doi`
@@ -231,7 +256,7 @@ Unterstützt werden alle Doichain-Adressformate: `N…` (P2PKH), `6…` (P2SH) u
 
 ## 8. Wallet der Node
 
-Das Wallet `doichain` auf der Node bezahlt Gebühren und Pfand für alle schreibenden Aufrufe. Es ist ein **Hot Wallet** auf einem Server, also nur mit Betriebsguthaben füllen (20 bis 50 DOI reichen für Hunderte Nachweise), nie mit Vermögen.
+Das Wallet `doichain` auf der Node bezahlt Gebühren und die 0,01 DOI je Name für alle schreibenden Aufrufe. Es ist ein **Hot Wallet** auf einem Server, also nur mit Betriebsguthaben füllen (20 bis 50 DOI reichen für Hunderte Nachweise), nie mit Vermögen.
 
 | Aufruf | Stufe | Zweck |
 |---|---|---|
@@ -271,7 +296,7 @@ Alle Fehler haben dieselbe Form, auch die, die nginx selbst erzeugt (413, 429, 5
 | 402 | Wallet ohne Guthaben |
 | 404 | Name, Transaktion, Block oder Pfad nicht vorhanden (auch Blockhöhe jenseits der Spitze) |
 | 405 | HTTP-Methode für diesen Pfad nicht erlaubt (etwa GET statt POST) |
-| 409 | Nachweis existiert schon, Name gehört jemand anderem, Operation wartet im Mempool, Transaktion vom Mempool abgelehnt |
+| 409 | Nachweis existiert schon (auch abgelaufen, solange `reanchor` fehlt), Name gehört jemand anderem, Operation wartet im Mempool, Transaktion vom Mempool abgelehnt |
 | 413 | JSON-Anfrage über 64 KB, Rohtransaktion über 1 MB oder Datei über 50 MB (dann den Hash lokal berechnen und als JSON schicken) |
 | 422 | JSON-Body oder Parameter passen nicht zum Schema (Feld fehlt, falscher Typ, Notiz zu lang, PoE-Wert über 520 Byte, `count` über dem Maximum, unbekannte Kodierung) |
 | 423 | Wallet gesperrt |
@@ -339,18 +364,18 @@ Seit Version 1.4.0 gibt es die Doichain auch als Werkzeugkasten für KI-Agenten.
 
 | Werkzeug | Wofür |
 |---|---|
-| `anchor_proof` | Hash eines Dokuments verankern (einziges schreibendes Werkzeug). Ist der Hash schon verankert, kommt der bestehende Nachweis zurück |
-| `check_proof` | Ist der Hash verankert, seit wann, in welchem Block |
+| `anchor_proof` | Hash eines Dokuments verankern (einziges schreibendes Werkzeug). Ist der Hash schon verankert, kommt der bestehende Nachweis zurück. Einen abgelaufenen Hash verankert es nur mit `reanchor_expired: true` erneut, das fügt einen späteren Zeitstempel hinzu und lässt den ursprünglichen Nachweis unverändert |
+| `check_proof` | Ist der Hash verankert, seit wann, in welchem Block. Nennt immer die erste Verankerung als Nachweiszeitpunkt und führt eine spätere Registrierung getrennt auf |
 | `hash_text` | SHA-256 eines kurzen Textes (bis 40.000 Zeichen), um Aussagen oder Nachrichten zu verankern. Der Text geht an den Server, wird dort aber nicht gespeichert. Dateien hasht der Agent selbst, zum Beispiel mit `sha256sum`, dafür braucht er Dateizugriff (Claude Code, Cursor, VS Code). Im reinen Chat ist Verifile der einfachere Weg |
 | `get_anchoring_quota` | verbleibende Nachweise des Tages |
-| `lookup_name`, `get_name_history`, `search_names` | Namen lesen, ihre Historie, Suche nach Präfix |
+| `lookup_name`, `get_name_history`, `search_names` | Namen lesen, ihre Historie, Suche nach Präfix (`search_names` mit `include_expired` auch abgelaufene Namen) |
 | `check_name_expiry` | bis zu 25 Namen auf einmal: aktiv, läuft bald ab, abgelaufen oder frei. Für aktive Namen ein geschätztes Datum aus dem gemessenen Blockabstand (derzeit gut 9 Minuten), für abgelaufene das echte Ablaufdatum aus der Kette |
 | `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message` | Zustand der Kette, Blöcke, Transaktionen, Adressguthaben, signierte Nachrichten prüfen |
 
 ### Wie es gebaut ist
 
 - Eigener Dienst `doichain-mcp` (Python, MCP-SDK 2.2) unter eigenem Benutzer `doimcp`. Er ruft ausschließlich die REST-API auf und hat keinen Zugriff auf RPC, Wallet oder die Schlüsseldatei der API. Es gibt keine Werkzeuge für Auszahlungen, Namensänderungen oder den RPC-Durchgriff.
-- Verankern nutzt denselben öffentlichen poe-Schlüssel wie Verifile, also dasselbe Tageskontingent: **10 Nachweise am Tag je IP-Adresse, für alle zusammen höchstens 200 am Tag**. Gehostete Apps (Claude im Browser, ChatGPT) verbinden sich aus den Rechenzentren ihrer Anbieter, deren Nutzer teilen sich also das Kontingent dieser Adressen. Für regelmäßiges Verankern Claude Code, Cursor oder VS Code nutzen oder einen eigenen Schlüssel vergeben. `check_proof` nennt immer die erste Verankerung, auch wenn ein abgelaufener Nachweis später erneut verankert wurde. nginx gibt die Adresse des Aufrufers als `X-Real-IP` mit, der MCP-Server reicht sie an die API weiter. Wer einen eigenen write-Schlüssel im Header `X-API-Key` mitschickt, hat kein Kontingent (`Authorization: Bearer` wird nur genommen, wenn der Wert wie ein Doichain-Schlüssel aussieht, fremde Token von Gateways werden ignoriert).
+- Verankern nutzt denselben öffentlichen poe-Schlüssel wie Verifile, also dasselbe Tageskontingent: **10 Nachweise am Tag je IP-Adresse, für alle zusammen höchstens 200 am Tag**. Gehostete Apps (Claude im Browser, ChatGPT) verbinden sich aus den Rechenzentren ihrer Anbieter, deren Nutzer teilen sich also das Kontingent dieser Adressen. Für regelmäßiges Verankern Claude Code, Cursor oder VS Code nutzen oder einen eigenen Schlüssel vergeben. `check_proof` nennt immer die erste Verankerung, auch wenn der Name nach seinem Ablauf später erneut registriert wurde. Inhaber und Notiz einer späteren Registrierung stehen getrennt davon. Die Namen gehören dem Wallet von DOI Labs, das die Verankerungen bezahlt. nginx gibt die Adresse des Aufrufers als `X-Real-IP` mit, der MCP-Server reicht sie an die API weiter. Wer einen eigenen write-Schlüssel im Header `X-API-Key` mitschickt, hat kein Kontingent. `Authorization: Bearer` wertet der MCP-Server nur aus, wenn der Betreiber `DOI_MCP_ACCEPT_BEARER=true` setzt (Standard aus), damit fremde Token von Clients und Gateways nicht an die API gehen.
 - Namen und Werte, die Fremde in die Kette geschrieben haben, tragen in den Antworten die Endung `_untrusted` und einen Hinweis. So behandelt ein Agent sie als Daten und nicht als Anweisung (Schutz gegen Prompt-Injection über die Blockchain).
 - Zustandslos mit JSON-Antworten, deshalb unproblematisch hinter nginx und mit zwei Workern. Unterstützt die Protokollversionen 2024-11-05 bis 2026-07-28, getestet mit den offiziellen Clients der SDK-Versionen 1.30 und 2.2. Keine JSON-RPC-Batches, keine Clients direkt im Browser (kein CORS). Höchstens sechs gleichzeitige Aufrufe an die REST-API je Worker, Namen fragt der Server eindeutig über `GET /v1/name?name=…` ab.
 - Der Dienst darf nur lokale Verbindungen aufbauen und annehmen (`IPAddressDeny=any`, `IPAddressAllow=localhost`), dazu Systemaufruf-Filter und weitere systemd-Schutzoptionen.

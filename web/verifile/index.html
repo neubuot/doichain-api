@@ -104,10 +104,10 @@
     <section class="section" id="faq">
       <h2>FAQ</h2>
       <details><summary data-i18n="faq.q1">Wird meine Datei hochgeladen?</summary><p data-i18n="faq.a1">Nein. Der Hash wird im Browser berechnet, die Bibliothek dafür liefert Verifile selbst aus. An den Doichain-Server gehen nur die 64 Zeichen des Hashes, dazu Ihre Notiz und, nur wenn Sie das Häkchen setzen, der Dateiname. Alles drei ist danach öffentlich in der Doichain lesbar, aus dem Hash lässt sich die Datei nicht rekonstruieren.</p></details>
-        <details><summary data-i18n="faq.q2">Was kostet das?</summary><p data-i18n="faq.a2">Für Sie nichts. Die Doichain-Gebühr und das Namenspfand trägt DOI Labs. Damit das so bleibt, gibt es ein Tageskontingent je Nutzer.</p></details>
-        <details><summary data-i18n="faq.q3">Wann ist der Nachweis gültig?</summary><p data-i18n="faq.a3">Nach der ersten Bestätigung, im Mittel etwa zehn Minuten nach dem Verankern. Die Seite zeigt den Stand automatisch an. Der Eintrag bleibt 36.000 Blöcke (rund 250 Tage) aktiv und danach dauerhaft in der Kettenhistorie sichtbar. Ein erneutes Verankern verlängert ihn.</p></details>
+        <details><summary data-i18n="faq.q2">Was kostet das?</summary><p data-i18n="faq.a2">Für Sie nichts. DOI Labs bezahlt die Doichain-Gebühr und die 0,01 DOI für den Namen aus dem eigenen Wallet. Die 0,01 DOI sind kein Pfand, das zurückfließt. Sie verfallen mit dem Ablauf des Namens. Damit das Angebot kostenlos bleibt, gibt es ein Tageskontingent je Internetanschluss.</p></details>
+        <details><summary data-i18n="faq.q3">Wann ist der Nachweis gültig?</summary><p data-i18n="faq.a3">Nach der ersten Bestätigung, im Mittel etwa zehn Minuten nach dem Verankern. Die Seite zeigt den Stand automatisch an. Der Zeitstempel bleibt danach dauerhaft in der Kettenhistorie. Der Name des Nachweises in der Doichain ist 36.000 Blöcke aktiv (rund 250 Tage bei zehn Minuten je Block). Danach ist er frei und könnte erneut registriert werden, auch von jemand anderem. Verifile nennt immer die erste Verankerung als Nachweiszeitpunkt und zeigt eine spätere Registrierung getrennt an. Ein erneutes Verankern verlängert den Nachweis nicht. Es fügt nur einen späteren Zeitstempel hinzu.</p></details>
         <details><summary data-i18n="faq.q4">Wie beweise ich das später einem Dritten?</summary><p data-i18n="faq.a4">Übergeben Sie die Datei und den heruntergeladenen Nachweis (JSON). Der Dritte berechnet den Hash der Datei, vergleicht ihn mit dem Nachweis und schaut den Eintrag im Doichain-Explorer nach. Beides geht ohne Verifile.</p></details>
-        <details><summary data-i18n="faq.q5">Was ist die Doichain?</summary><p data-i18n="faq.a5">Eine öffentliche Blockchain der Bitcoin-Familie, die per Merged Mining von Bitcoins Rechenleistung gesichert wird. Sie ist auf fälschungssichere Nachweise ausgelegt, personenbezogene Daten gehören nie auf die Kette.</p></details>
+        <details><summary data-i18n="faq.q5">Was ist die Doichain?</summary><p data-i18n="faq.a5">Eine öffentliche Blockchain der Bitcoin-Familie, die per Merged Mining von Bitcoins Rechenleistung gesichert wird. Sie ist auf Zeitstempel ausgelegt, die sich nachträglich nicht ändern lassen. Personenbezogene Daten gehören deshalb nie auf die Kette.</p></details>
     </section>
   </main>
 
@@ -129,8 +129,9 @@
         <tr><th>Transaktion / Transaction</th><td class="p-txid mono"></td></tr>
         <tr><th>Name in der Doichain</th><td class="p-name mono"></td></tr>
         <tr><th>Explorer</th><td class="p-explorer mono"></td></tr>
+        <tr class="p-later-row"><th>Spätere Registrierung / Later registration</th><td class="p-later mono"></td></tr>
       </table>
-      <p class="print-note">Prüfung: SHA-256 der Datei berechnen, mit dem Hash vergleichen, Eintrag im Explorer oder unter https://doi-api.sendlabs.de/v1/poe/&lt;hash&gt; nachschlagen. Verification: compute the file's SHA-256, compare, look up the entry in the explorer or via the API.</p>
+      <p class="print-note">Prüfung: SHA-256 der Datei berechnen, mit dem Hash vergleichen, Eintrag im Explorer oder unter https://doi-api.sendlabs.de/v1/poe/&lt;hash&gt; nachschlagen. Maßgeblich ist die erste Verankerung (first_anchored). Verification: compute the file's SHA-256, compare, look up the entry in the explorer or via the API. The first anchoring (first_anchored) is the proof time.</p>
       <p class="print-date"></p>
     </div>
   </template>

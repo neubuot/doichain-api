@@ -55,7 +55,7 @@ Drei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausge
 | Kette | `GET /v1/blocks`, `GET /v1/block/{höhe oder hash}`, `GET /v1/tx/{txid}` (mit dekodierten Namensoperationen), `POST /v1/tx/decode`, `POST /v1/tx/send`, `GET /v1/mempool`, `GET /v1/network` |
 | Adressen | `GET /v1/address/{adresse}`, `/history`, `/utxos` für `N…`, `6…` und `dc1q…` |
 | Namen | `GET /v1/name/{name}`, `/history`, `GET /v1/name?name=…` und `GET /v1/names/history?name=…` (eindeutig für jeden Namen), `GET /v1/names` (Blättern über `after`/`next_after`), `GET /v1/names/pending`, `POST /v1/name/doi`, `/update`, `/new`, `/firstupdate`, `/sendtoname` |
-| Proof of Existence | `GET /v1/poe/{sha256}`, `POST /v1/poe/verify`, `POST /v1/poe/verify/file`, `POST /v1/poe`, `POST /v1/poe/file` |
+| Proof of Existence | `GET /v1/poe/{sha256}`, `POST /v1/poe/verify`, `POST /v1/poe/verify/file`, `POST /v1/poe`, `POST /v1/poe/file` (beide mit optionalem `reanchor` für abgelaufene Hashes) |
 | Wallet | `GET /v1/wallet`, `/funding-address`, `/names`, `/transactions`, `/utxos`, `POST /v1/wallet/address`, `/abandon`, `/send` |
 | Werkzeuge | `GET /v1/validate/{adresse}`, `POST /v1/message/verify`, `/sign`, `GET /v1/fee`, `POST /v1/rpc` (Durchgriff mit Sperrliste) |
 
@@ -106,7 +106,7 @@ ElectrumX sind nur lokal erreichbar, nach außen spricht ausschließlich nginx.
   `fallbackfee` ist Pflicht, weil `estimatesmartfee` auf Doichain keine Schätzung liefert. Nach dem Sync
   muss `getblockhash 431018` den Wert `71d50ff12b090561cc918ddb560334b4350758c7eace3f058dd332fb112f4b67`
   liefern (Kette nach dem Sicherheits-Fork vom 11.09.2026).
-- Ein geladenes Wallet (Standardname `doichain`) mit etwas DOI für Gebühren und das Namenspfand von 0,01 DOI je Eintrag.
+- Ein geladenes Wallet (Standardname `doichain`) mit etwas DOI für Gebühren und die 0,01 DOI je Eintrag, die im Namen gebunden bleiben und mit seinem Ablauf verloren sind.
 - **ElectrumX** aus dem [Doichain-Fork](https://github.com/Doichain/electrumx) (Version 2.0.0-doi1 oder neuer) auf `127.0.0.1:50001` für die Adressabfragen. Ohne ElectrumX funktionieren alle Endpunkte außer `/v1/address/*`.
 
 ## Installation auf dem Server
@@ -216,10 +216,27 @@ Aufrufer, nur der Hash geht auf die Kette. Als Wert wird ein kompaktes JSON gesp
 {"v":1,"alg":"sha256","hash":"<hash>","ts":"2026-09-25T19:12:03Z","file":"vertrag.pdf","note":"Mietvertrag"}
 ```
 
-Regeln der Kette: 0,01 DOI Pfand je Name (verfällt bei Ablauf), Ablauf nach 36.000 Blöcken (rund 250 Tage,
-Verlängerung durch erneutes `name_doi` des Inhabers), nur der Inhaber kann einen aktiven Namen ändern,
-ein Nachweis ist erst nach der ersten Bestätigung endgültig, je Name nur eine unbestätigte Operation.
-`GET /v1/poe/{hash}` liefert Blockhöhe, Blockzeit, Bestätigungen, Inhaber und Explorer-Link.
+Der Zeitstempel lässt sich nachträglich nicht ändern, das Dokument selbst kommt nie auf die Kette.
+
+Regeln der Kette: 0,01 DOI je Name (im Namen gebunden und mit dem Ablauf verloren, kein Pfand, das zurückfließt),
+Ablauf nach 36.000 Blöcken (rund 250 Tage), nur der Inhaber kann einen aktiven Namen ändern oder verlängern
+(`POST /v1/name/doi` mit write-Schlüssel), ein Nachweis ist erst nach der ersten Bestätigung endgültig, je Name
+nur eine unbestätigte Operation. Nach dem Ablauf ist der Name frei und kann von jedem neu registriert werden.
+
+`GET /v1/poe/{hash}` (ebenso `POST /v1/poe/verify` und `/verify/file`) liefert Status, Blockhöhe, Blockzeit,
+Bestätigungen, Inhaber und Explorer-Link des aktuellen Eintrags. Der eigentliche Nachweis ist immer
+`first_anchored`, die erste Verankerung mit `txid`, `height`, `block_hash`, `block_time_iso`, `value`, `value_json`
+und `owner_address` (Inhaber zu diesem Zeitpunkt, `null`, wenn unbekannt). `reregistered_after_expiry: true` zeigt,
+dass der Name abgelaufen war und danach neu registriert wurde, `current_registration_start` nennt dann `txid`,
+`height`, `block_time_iso` und `explorer_tx` dieser Neuregistrierung. Inhaber und Wert auf oberster Ebene gehören
+in diesem Fall nicht zum ursprünglichen Nachweis. Aktualisierungen des Inhabers vor dem Ablauf zählen nicht als
+Neuregistrierung.
+
+`POST /v1/poe` und `POST /v1/poe/file` antworten für einen aktiven oder wartenden Hash mit 409, sie verlängern
+keine aktiven Namen. Für einen abgelaufenen Hash kommt ebenfalls 409 mit Block und Zeit der ersten Verankerung,
+es sei denn, der Aufruf setzt ausdrücklich `"reanchor": true` (Formularfeld `reanchor=true` bei `/v1/poe/file`).
+Dann entsteht eine neue, spätere Registrierung, die Antwort enthält `reanchored_after_expiry: true` (und
+`renewed` mit demselben Wert für ältere Clients), der ursprüngliche Nachweis bleibt unverändert.
 
 ## MCP-Server für KI-Agenten
 
@@ -236,18 +253,18 @@ claude mcp add --scope user --transport http doichain https://doi-api.sendlabs.d
 
 | Werkzeug | Zweck |
 |---|---|
-| `anchor_proof` | SHA-256 als `poe/<hash>` verankern (einziges schreibendes Werkzeug, bereits verankerte Hashes werden erkannt) |
-| `check_proof` | Status, Block, Zeit und Transaktion eines Nachweises |
+| `anchor_proof` | SHA-256 als `poe/<hash>` verankern (einziges schreibendes Werkzeug, bereits verankerte Hashes werden erkannt, abgelaufene nur mit `reanchor_expired: true` erneut, das ergibt einen späteren Zeitstempel) |
+| `check_proof` | Status, Block, Zeit und Transaktion der ersten Verankerung, eine spätere Registrierung getrennt |
 | `hash_text` | SHA-256 eines kurzen Textes (im Server berechnet, nichts wird gespeichert, Dateien hasht der Agent selbst) |
 | `get_anchoring_quota` | verbleibendes Tageskontingent des Aufrufers |
-| `lookup_name`, `get_name_history`, `search_names` | Namen lesen, Historie, Suche nach Präfix |
+| `lookup_name`, `get_name_history`, `search_names` | Namen lesen, Historie, Suche nach Präfix (mit `include_expired` auch abgelaufene) |
 | `check_name_expiry` | bis zu 25 Namen: aktiv, läuft bald ab, abgelaufen, frei, mit geschätztem Datum (gemessener Blockabstand) |
 | `get_chain_status`, `get_block`, `get_transaction`, `get_address`, `verify_message` | Kette, Adressen, signierte Nachrichten |
 
 Verankern nutzt den öffentlichen poe-Schlüssel (derselbe wie Verifile) mit dem Tageskontingent je Client-IP.
 nginx setzt `X-Real-IP`, der MCP-Server reicht die Adresse als `X-Forwarded-For` an die API weiter. Wer einen
-eigenen Schlüssel im Header `X-API-Key` oder `Authorization: Bearer` mitschickt, verankert damit (write-Schlüssel
-ohne Kontingent). Gehostete Apps (Claude im Browser, ChatGPT) verbinden sich aus den Rechenzentren ihrer Anbieter,
+eigenen Schlüssel im Header `X-API-Key` mitschickt, verankert damit (write-Schlüssel ohne Kontingent).
+`Authorization: Bearer` wertet der MCP-Server nur aus, wenn `DOI_MCP_ACCEPT_BEARER=true` gesetzt ist (Standard aus). Gehostete Apps (Claude im Browser, ChatGPT) verbinden sich aus den Rechenzentren ihrer Anbieter,
 ihre Nutzer teilen sich deshalb das Kontingent dieser Adressen. Namen und Werte aus der Kette tragen in den Antworten die Endung `_untrusted`, damit Agenten sie als Daten
 und nicht als Anweisung behandeln. `GET /mcp` ohne `text/html` beantwortet nginx mit 405 (kein SSE-Strom im
 zustandslosen Betrieb), Browser bekommen die Landingpage. Gesundheitsprüfung: `GET /mcp/health`.
