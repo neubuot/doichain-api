@@ -86,7 +86,7 @@ fi
 ln -sf "$NGXV" /etc/nginx/sites-enabled/verifile
 
 # MCP-Server (doichain_mcp): eigener Systembenutzer ohne Zugriff auf /etc/doichain-api, eigene venv.
-# Die Umgebungsdatei wird bei jedem Lauf neu erzeugt (nur API-Adresse und oeffentlicher poe-Schluessel).
+# Die Umgebungsdatei wird bei jedem Lauf neu erzeugt (API-Adresse, oeffentlicher poe-Schluessel, Bearer-Schalter).
 MCP_BASE=/opt/doichain-mcp
 MCP_ENV=/etc/doichain-mcp/doichain-mcp.env
 id doimcp >/dev/null 2>&1 || useradd --system --home-dir "$MCP_BASE" --shell /usr/sbin/nologin doimcp
@@ -106,7 +106,7 @@ install -d -o root -g doimcp -m 0750 /etc/doichain-mcp
     "DOI_MCP_PUBLIC_URL=$API_BASE" \
     "DOI_MCP_VERIFILE_URL=https://verifile.it" \
     "DOI_MCP_POE_KEY=$POE_KEY" \
-    "DOI_MCP_ALLOWED_HOSTS=doi-api.sendlabs.de,api.doi.zone,127.0.0.1:*,localhost:*" > "$MCP_ENV" )
+    "DOI_MCP_ALLOWED_HOSTS=doi-api.sendlabs.de,api.doi.zone,127.0.0.1:*,localhost:*"     "# Authorization: Bearer als API-Schluessel werten (Standard im Code aus, hier bewusst an)."     "DOI_MCP_ACCEPT_BEARER=true" > "$MCP_ENV" )
 chown root:doimcp "$MCP_ENV"; chmod 0640 "$MCP_ENV"
 install -d -m 0755 /var/www/doichain-mcp-site
 rsync -a --delete "$SRC/web/mcp-site/" /var/www/doichain-mcp-site/
