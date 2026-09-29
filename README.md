@@ -349,5 +349,5 @@ CHANGELOG.md
 - OpenAPI-Beschreibung: `/openapi.json` der laufenden Instanz
 - Doichain: [Core](https://github.com/Doichain/doichain-core), [ElectrumX-Fork](https://github.com/Doichain/electrumx), [Explorer](https://doi-explorer.le-space.de)
 
-Lizenz noch nicht festgelegt (Repo privat). Bis dahin alle Rechte vorbehalten, DOI Labs AG.
+Lizenz: MIT, siehe [`LICENSE`](LICENSE). Copyright (c) 2026 DOI Labs AG.
 Entwickelt von Ottmar Neuburger mit Claude (Anthropic), September 2026.
