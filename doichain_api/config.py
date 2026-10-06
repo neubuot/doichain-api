@@ -32,6 +32,9 @@ class Settings:
     poe_keys: tuple[str, ...] = field(default_factory=lambda: _csv(os.environ.get("DOI_API_KEYS_POE", "")))
     poe_public_per_ip_day: int = int(os.environ.get("DOI_POE_PUBLIC_PER_IP_DAY", "10"))
     poe_public_per_day: int = int(os.environ.get("DOI_POE_PUBLIC_PER_DAY", "200"))
+    # Schluessellos: noch engere Grenzen fuer POST /v1/poe/public (ganz ohne API-Key).
+    poe_nokey_per_ip_day: int = int(os.environ.get("DOI_POE_NOKEY_PER_IP_DAY", "3"))
+    poe_nokey_per_day: int = int(os.environ.get("DOI_POE_NOKEY_PER_DAY", "50"))
     state_dir: str = os.environ.get("DOI_STATE_DIR", "/var/lib/doichain-api")
     poe_prefix: str = os.environ.get("DOI_POE_PREFIX", "poe/")
     max_upload_bytes: int = int(os.environ.get("DOI_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))

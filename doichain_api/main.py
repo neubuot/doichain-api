@@ -1113,11 +1113,6 @@ async def poe_quota(request: Request, level: int = Depends(require("poe"))):
     return {"unlimited": False, **quota.usage(client_ip(request))}
 
 
-@app.get("/v1/poe/{hash}", tags=["Proof of Existence"], summary="Nachweis zu einem SHA-256-Hash pruefen", description=POE_STATUS_DESCRIPTION, dependencies=[Depends(require("read"))])
-async def poe_get(hash: str = Path(..., description="SHA-256 der Datei, 64 Hex-Zeichen")):
-    return await poe_status(check_hash(hash))
-
-
 @app.post("/v1/poe/verify", tags=["Proof of Existence"], summary="Nachweis pruefen (Hash als JSON)", description="Antwort wie GET /v1/poe/{hash}. " + POE_STATUS_DESCRIPTION, dependencies=[Depends(require("read"))])
 async def poe_verify(body: PoeVerify):
     return await poe_status(check_hash(body.hash))
@@ -1129,6 +1124,30 @@ async def poe_verify_file(file: UploadFile = File(..., description="Datei bis 50
     result = await poe_status(hash_hex)
     result["file"] = {"name": file.filename, "size": size}
     return result
+
+
+# --- Oeffentlicher PoE-Endpunkt ohne API-Key ---
+
+class PoePublicCreate(BaseModel):
+    hash: str = Field(..., description="SHA-256 der Datei, 64 Hex-Zeichen", examples=["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"])
+    filename: str | None = Field(None, max_length=80, description="Optionaler Dateiname, hoechstens 80 Zeichen (wird oeffentlich im Wert gespeichert)")
+    note: str | None = Field(None, max_length=160, description="Optionale Notiz, hoechstens 160 Zeichen (oeffentlich auf der Kette)")
+
+
+@app.get("/v1/poe/public/quota", tags=["Proof of Existence"], summary="Verbleibendes Tageskontingent des oeffentlichen Endpunkts (ohne Schluessel)")
+async def poe_public_quota(request: Request):
+    return {"unlimited": False, **quota.usage(client_ip(request), per_ip_day=settings.poe_nokey_per_ip_day, per_day=settings.poe_nokey_per_day)}
+
+
+@app.post("/v1/poe/public", tags=["Proof of Existence"], summary="Nachweis anlegen ohne API-Key (IP-basiertes Tageskontingent)", description="Oeffentlicher Endpunkt ohne Authentifizierung. Kontingent je IP-Adresse und Tag, Standardmaessig 3 je IP und 50 insgesamt. Neuregistrierung (reanchor) ist hier nicht moeglich.", status_code=201)
+async def poe_public_create(body: PoePublicCreate, request: Request):
+    return await _poe_create(check_hash(body.hash), body.filename, body.note, public=True, ip=client_ip(request), reanchor=False, nokey=True)
+
+
+# {hash} muss nach den /v1/poe/public/* und /v1/poe/quota Routen stehen, damit FastAPI sie nicht als Hash-Parameter deutet.
+@app.get("/v1/poe/{hash}", tags=["Proof of Existence"], summary="Nachweis zu einem SHA-256-Hash pruefen", description=POE_STATUS_DESCRIPTION, dependencies=[Depends(require("read"))])
+async def poe_get(hash: str = Path(..., description="SHA-256 der Datei, 64 Hex-Zeichen")):
+    return await poe_status(check_hash(hash))
 
 
 @app.post("/v1/poe", tags=["Proof of Existence"], summary="Nachweis anlegen (Hash als JSON, poe oder write)", description=POE_CREATE_DESCRIPTION, status_code=201)
@@ -1150,7 +1169,7 @@ async def poe_create_file(
     return result
 
 
-async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, public: bool = False, ip: str = "", reanchor: bool = False) -> dict:
+async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, public: bool = False, ip: str = "", reanchor: bool = False, nokey: bool = False) -> dict:
     current = await poe_status(hash_hex)
     if current["status"] == "confirmed":
         # Block und Zeit der ersten Verankerung nennen, nicht die einer spaeteren Neuregistrierung.
@@ -1176,17 +1195,21 @@ async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, 
         )
     name = poe_name(hash_hex)
     value = build_poe_value(hash_hex, filename, note)
+    # Kontingentgrenzen: nokey (oeffentlich ohne Schluessel) nutzt engere Grenzen als poe-Schluessel.
+    quota_limits = {}
+    if nokey:
+        quota_limits = {"per_ip_day": settings.poe_nokey_per_ip_day, "per_day": settings.poe_nokey_per_day}
     remaining = None
     if public:
         await public_poe_guard()
-        remaining = quota.register(ip)
+        remaining = quota.register(ip, **quota_limits)
     try:
         txid = await rpc.call("name_doi", name, value, name_options(), wallet=True)
         result = await ensure_accepted(txid)
     except Exception:
         if public:
             quota.release(ip)
-            remaining = quota.usage(ip)
+            remaining = quota.usage(ip, **quota_limits)
         raise
     result.update(
         {
