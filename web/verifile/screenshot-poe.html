@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Screenshot PoE: Chrome-Erweiterung, Datenschutz</title>
+  <meta name="description" content="Screenshot PoE speichert Screenshots lokal und verankert ihren SHA-256-Hash als Zeitnachweis in der Doichain. Funktionsweise und Datenschutzerklärung.">
+  <meta name="theme-color" content="#0b1020">
+  <link rel="canonical" href="https://verifile.it/screenshot-poe.html">
+  <link rel="icon" href="screenshot-poe-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="screenshot-poe.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="grid"></div></div>
+
+  <header class="top">
+    <a class="brand" href="./">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 64 64" width="28" height="28"><rect width="64" height="64" rx="14" fill="#101736"/><path d="M18 34l10 10 18-22" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>Verifile</span>
+    </a>
+  </header>
+
+  <main class="legal">
+    <div class="intro">
+      <img src="screenshot-poe-icon.svg" alt="">
+      <div>
+        <h1>Screenshot PoE</h1>
+        <p>Chrome-Erweiterung für Zeitnachweise von Screenshots auf der Doichain</p>
+      </div>
+    </div>
+    <nav class="langnav">
+      <a href="#funktion">Funktionsweise</a>
+      <a href="#datenschutz">Datenschutzerklärung</a>
+      <a href="#en">English</a>
+    </nav>
+
+    <section id="funktion">
+      <h2>Funktionsweise</h2>
+      <p>Screenshot PoE nimmt den sichtbaren Bereich des aktiven Tabs auf, legt das Bild in einem Unterordner Ihres Download-Verzeichnisses ab und berechnet lokal im Browser den SHA-256-Hash der Datei. Auf Wunsch wird nur dieser Hash in der Doichain verankert. Der Block, der ihn enthält, belegt, dass eine Datei mit genau diesem Hash spätestens zu diesem Zeitpunkt existierte. Die Erweiterung belegt nicht, wer den Nachweis eingereicht hat, und auch nicht, dass der Inhalt des Screenshots der Wirklichkeit entspricht.</p>
+      <p>Prüfen lässt sich jeder Nachweis ohne die Erweiterung, zum Beispiel auf <a href="./">verifile.it</a> oder mit jedem Doichain-Explorer.</p>
+    </section>
+
+    <section id="datenschutz">
+      <h2>Datenschutzerklärung</h2>
+      <p class="muted">Stand: 10. Oktober 2026</p>
+
+      <h3>Verantwortlicher</h3>
+      <p>Webanizer AG, Schulgasse 5, 84359 Simbach am Inn, Deutschland<br>
+      Vorstand: Ottmar Neuburger (Vorsitz)<br>
+      Registergericht: Amtsgericht Landshut, HRB 5177<br>
+      Telefon: +49 (0) 8571 97 39 694, E-Mail: <a href="mailto:ottmar.neuburger@webanizer.de">ottmar.neuburger@webanizer.de</a></p>
+
+      <h3>Daten, die nur auf Ihrem Gerät bleiben</h3>
+      <p>Die Erweiterung speichert folgende Daten ausschließlich lokal in Ihrem Browser (IndexedDB und chrome.storage) und in Ihrem Download-Verzeichnis:</p>
+      <ul>
+        <li>die Screenshots selbst und daraus erzeugte Vorschaubilder,</li>
+        <li>Adresse (URL) und Titel der aufgenommenen Seite,</li>
+        <li>Notizen, Status, Blockhöhe und Transaktionsdaten der Nachweise,</li>
+        <li>Ihre Einstellungen, einschließlich eines optional eingetragenen API-Schlüssels.</li>
+      </ul>
+      <p>Diese Daten werden nicht an uns oder Dritte übertragen. Sie löschen sie über die Löschfunktion der Galerie oder durch Entfernen der Erweiterung. Dateien im Download-Ordner bleiben erhalten, bis Sie sie löschen.</p>
+
+      <h3>Daten, die an den Doichain-API-Server übertragen werden</h3>
+      <p>Für das Verankern und für Statusabfragen verbindet sich die Erweiterung mit dem Server doi-api.sendlabs.de, den wir betreiben. Dabei werden übertragen:</p>
+      <ul>
+        <li>der SHA-256-Hash des Screenshots (nicht das Bild),</li>
+        <li>die von Ihnen eingegebene Notiz, falls Sie eine eintragen,</li>
+        <li>Ihre IP-Adresse, die technisch bei jeder Verbindung anfällt,</li>
+        <li>ein API-Schlüssel, falls Sie einen eingetragen haben.</li>
+      </ul>
+      <p>Die IP-Adresse verwenden wir, um die kostenlose Nutzung auf ein Tageskontingent je Adresse zu begrenzen. Der Zähler wird am Ende des jeweiligen Tages (UTC) gelöscht. Zusätzlich protokolliert der Webserver Zugriffe (IP-Adresse, Zeitpunkt, aufgerufene Adresse) zur Sicherstellung des Betriebs und zur Abwehr von Missbrauch. Diese Protokolle werden nach spätestens 14 Tagen gelöscht.</p>
+      <p>Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Bereitstellung des von Ihnen angeforderten Dienstes) sowie Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einem sicheren und missbrauchsfreien Betrieb).</p>
+
+      <h3>Öffentliche und dauerhafte Speicherung in der Blockchain</h3>
+      <p>Ein verankerter Hash und die dazu eingegebene Notiz werden in der öffentlichen Doichain gespeichert. Sie sind weltweit für jeden einsehbar und können technisch weder geändert noch gelöscht werden. Tragen Sie deshalb keine personenbezogenen Daten oder vertraulichen Inhalte in die Notiz ein. Aus dem Hash allein lässt sich der Screenshot nicht rekonstruieren.</p>
+
+      <h3>Hosting</h3>
+      <p>Der API-Server wird bei der Hetzner Online GmbH, Industriestr. 25, 91710 Gunzenhausen, in Deutschland betrieben. Mit Hetzner besteht ein Vertrag zur Auftragsverarbeitung nach Art. 28 DSGVO.</p>
+
+      <h3>Keine Analyse, keine Weitergabe</h3>
+      <p>Die Erweiterung enthält keine Analyse- oder Tracking-Werkzeuge, zeigt keine Werbung und lädt keinen Code von fremden Servern nach. Wir verkaufen keine Daten und geben sie nicht an Dritte weiter, außer wir sind gesetzlich dazu verpflichtet.</p>
+
+      <h3>Ihre Rechte</h3>
+      <p>Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch nach Art. 15 bis 21 DSGVO. Wenden Sie sich dazu an die oben genannte Adresse. Außerdem können Sie sich bei einer Datenschutzaufsichtsbehörde beschweren, für uns zuständig ist das Bayerische Landesamt für Datenschutzaufsicht, Promenade 18, 91522 Ansbach. Für Einträge in der Blockchain ist eine Löschung technisch nicht möglich, siehe oben.</p>
+    </section>
+
+    <hr>
+
+    <section id="en" lang="en">
+      <h2>Privacy policy (English)</h2>
+      <p class="muted">Last updated: 10 October 2026. The German version above is authoritative.</p>
+
+      <h3>Controller</h3>
+      <p>Webanizer AG, Schulgasse 5, 84359 Simbach am Inn, Germany, <a href="mailto:ottmar.neuburger@webanizer.de">ottmar.neuburger@webanizer.de</a></p>
+
+      <h3>Data that stays on your device</h3>
+      <p>Screenshots, thumbnails, page URL and title, notes, proof status and your settings (including an optional API key) are stored only locally in your browser and in your downloads folder. They are never sent to us or to third parties. Delete them with the gallery's delete function or by removing the extension.</p>
+
+      <h3>Data sent to the Doichain API server</h3>
+      <p>To anchor a proof and to check its status, the extension contacts doi-api.sendlabs.de, operated by us. It sends the SHA-256 hash of the screenshot (never the image), your optional note, and an API key if you entered one. Your IP address is processed for each connection. We use it to enforce the free daily quota per address. The counter is deleted at the end of each day (UTC). Web server access logs (IP address, time, requested URL) are kept for operations and abuse prevention and deleted after 14 days at the latest. Legal basis: Art. 6(1)(b) and (f) GDPR.</p>
+
+      <h3>Public and permanent storage on the blockchain</h3>
+      <p>An anchored hash and its note are written to the public Doichain. They are visible worldwide and cannot be changed or deleted. Do not put personal data or confidential information into the note. The screenshot cannot be reconstructed from its hash.</p>
+
+      <h3>No analytics, no sharing</h3>
+      <p>The extension contains no analytics or tracking, shows no ads and loads no remote code. We do not sell data or share it with third parties unless required by law. The server is hosted by Hetzner Online GmbH in Germany under a data processing agreement.</p>
+
+      <h3>Your rights</h3>
+      <p>You have the rights under Art. 15 to 21 GDPR (access, rectification, erasure, restriction, portability, objection) and may lodge a complaint with a supervisory authority, for us the Bavarian Data Protection Authority (BayLDA), Ansbach.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p><a href="./">Verifile</a> · <a href="https://doi-api.sendlabs.de/docs" target="_blank" rel="noopener">API</a> · <a href="#datenschutz">Datenschutz</a></p>
+  </footer>
+</body>
+</html>
