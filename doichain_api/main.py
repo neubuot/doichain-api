@@ -824,6 +824,83 @@ async def transaction(
     return decorate_tx(tx, include_hex=include_hex)
 
 
+def sha256d(data: bytes) -> bytes:
+    return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
+def merkle_branch(txids: list[str], index: int) -> tuple[list[str], str]:
+    """Geschwister-Hashes von der Transaktion an Position index bis zur Wurzel, in der Schreibweise der txids
+    (Hex, Byte-Reihenfolge umgedreht wie in Bitcoin), dazu die berechnete Wurzel in derselben Schreibweise."""
+    level = [bytes.fromhex(t)[::-1] for t in txids]
+    branch: list[str] = []
+    i = index
+    while len(level) > 1:
+        if len(level) % 2 == 1:
+            level.append(level[-1])
+        branch.append(level[i ^ 1][::-1].hex())
+        level = [sha256d(level[k] + level[k + 1]) for k in range(0, len(level), 2)]
+        i //= 2
+    return branch, level[0][::-1].hex()
+
+
+TX_PROOF_DESCRIPTION = (
+    "Liefert alles, was ein Dritter braucht, um den Einschluss einer bestaetigten Transaktion in einen Block ohne "
+    "diese API nachzurechnen: die rohe Transaktion, den 80-Byte-Blockheader, den Merkle-Zweig mit der Position der "
+    "Transaktion und das txoutproof der Node. Pruefung: doppeltes SHA-256 der Transaktion mit den Geschwistern aus "
+    "merkle_branch (an Position tx_index beginnend, Byte-Reihenfolge wie in Bitcoin, auf jeder Ebene doppeltes SHA-256 "
+    "der 64 Byte) zur Wurzel verbinden, die Wurzel steht in Byte 36 bis 67 des Headers, das doppelte SHA-256 des "
+    "Headers ist der Blockhash. txoutproof_hex prueft Doichain Core mit verifytxoutproof, es enthaelt bei "
+    "Merged-Mining-Bloecken die AuxPoW-Daten und ist fuer generische Bitcoin-Werkzeuge nicht lesbar. "
+    "Fuer eine unbestaetigte Transaktion antwortet der Aufruf mit 409."
+)
+
+
+@app.get("/v1/tx/{txid}/proof", tags=["Kette"], summary="Einschlussnachweis einer Transaktion (Header, Merkle-Zweig, txoutproof)", description=TX_PROOF_DESCRIPTION, dependencies=[Depends(require("read"))])
+async def transaction_proof(txid: str = Path(..., min_length=64, max_length=64, description="Transaktions-ID (64 Hex-Zeichen)")):
+    if not HASH_RE.match(txid):
+        raise HTTPException(400, "txid muss aus 64 Hex-Zeichen bestehen")
+    txid = txid.lower()
+    tx = await rpc.call("getrawtransaction", txid, True)
+    block_hash = tx.get("blockhash")
+    if not block_hash:
+        raise HTTPException(409, "Die Transaktion ist noch in keinem Block, einen Einschlussnachweis gibt es erst nach der ersten Bestaetigung")
+    block = await rpc.call("getblock", block_hash, 1)
+    raw_block = await rpc.call("getblock", block_hash, 0)
+    txids = [str(t) for t in block.get("tx", [])]
+    if txid not in txids:
+        raise HTTPException(502, "Der Block der Node enthaelt die Transaktion nicht mehr, bitte spaeter erneut abfragen (Umbau der Kette?)")
+    index = txids.index(txid)
+    branch, root = merkle_branch(txids, index)
+    header_hex = str(raw_block)[:160]
+    header_ok = len(header_hex) == 160 and sha256d(bytes.fromhex(header_hex))[::-1].hex() == block_hash
+    try:
+        txoutproof = await rpc.call("gettxoutproof", [txid], block_hash)
+    except RPCError:
+        txoutproof = None
+    return {
+        "txid": txid,
+        "tx_hex": tx.get("hex"),
+        "confirmations": tx.get("confirmations"),
+        "block": {
+            "height": block.get("height"),
+            "hash": block_hash,
+            "time": block.get("time"),
+            "time_iso": iso(block.get("time")),
+            "merkleroot": block.get("merkleroot"),
+            "n_tx": len(txids),
+            "header_hex": header_hex if header_ok else None,
+            "header_matches_hash": header_ok,
+        },
+        "tx_index": index,
+        "merkle_branch": branch,
+        "merkle_root_computed": root,
+        "merkle_root_matches": root == block.get("merkleroot"),
+        "txoutproof_hex": txoutproof,
+        "chain_ref": {"height": settings.fork_height, "hash": settings.fork_hash, "hint": "Gueltig ist die Kette, die diesen Block enthaelt"},
+        "explorer": explorer_link("tx", txid),
+    }
+
+
 @app.post("/v1/tx/decode", tags=["Kette"], summary="Rohtransaktion dekodieren", dependencies=[Depends(require("read"))])
 async def tx_decode(body: RawTx):
     return decorate_tx(await rpc.call("decoderawtransaction", body.hex))
@@ -1092,6 +1169,23 @@ def client_ip(request: Request) -> str:
     return str(addr)
 
 
+def quota_ident(key_id: str | None, ip: str) -> str:
+    """Zaehler-Identitaet fuer das Kontingent: Schluessel mit eigenem Kontingent (DOI_POE_KEY_LIMITS) zaehlen
+    je Schluessel, alle anderen poe-Schluessel je IP-Adresse."""
+    if key_id and key_id in settings.poe_key_limits:
+        return quota.KEY_PREFIX + key_id
+    return ip
+
+
+def quota_limits_for(key_id: str | None, *, nokey: bool = False) -> dict:
+    """Grenzen fuer quota.register und quota.usage je nach Schluesselart."""
+    if nokey:
+        return {"per_ip_day": settings.poe_nokey_per_ip_day, "per_day": settings.poe_nokey_per_day}
+    if key_id and key_id in settings.poe_key_limits:
+        return {"per_ip_day": settings.poe_key_limits[key_id], "per_day": settings.poe_keyed_per_day}
+    return {}
+
+
 # Unter dieser Reserve (DOI, bestaetigt) pausieren die oeffentlichen Nachweise mit poe-Schluessel.
 PUBLIC_POE_RESERVE = 5.0
 
@@ -1106,11 +1200,13 @@ async def public_poe_guard() -> None:
         pass
 
 
-@app.get("/v1/poe/quota", tags=["Proof of Existence"], summary="Verbleibendes Tageskontingent der oeffentlichen PoE-App (poe-Schluessel)", description="Mit write- oder admin-Schluessel gibt es kein Kontingent, dann steht unlimited:true.")
+@app.get("/v1/poe/quota", tags=["Proof of Existence"], summary="Verbleibendes Tageskontingent eines poe-Schluessels", description="Mit write- oder admin-Schluessel gibt es kein Kontingent, dann steht unlimited:true. key_id ist der Fingerprint des Schluessels (erste 16 Hexzeichen seines SHA-256), mit dem der Betreiber in DOI_POE_KEY_LIMITS ein eigenes Tageskontingent je Schluessel einstellen kann. Dann steht scope:key und das Kontingent gilt unabhaengig von der IP-Adresse, sonst scope:ip mit dem Kontingent der oeffentlichen App je IP-Adresse.")
 async def poe_quota(request: Request, level: int = Depends(require("poe"))):
     if level > LEVELS["poe"]:
         return {"unlimited": True}
-    return {"unlimited": False, **quota.usage(client_ip(request))}
+    key_id = getattr(request.state, "api_key_id", None)
+    ident = quota_ident(key_id, client_ip(request))
+    return {"unlimited": False, "key_id": key_id, **quota.usage(ident, **quota_limits_for(key_id))}
 
 
 @app.post("/v1/poe/verify", tags=["Proof of Existence"], summary="Nachweis pruefen (Hash als JSON)", description="Antwort wie GET /v1/poe/{hash}. " + POE_STATUS_DESCRIPTION, dependencies=[Depends(require("read"))])
@@ -1152,7 +1248,10 @@ async def poe_get(hash: str = Path(..., description="SHA-256 der Datei, 64 Hex-Z
 
 @app.post("/v1/poe", tags=["Proof of Existence"], summary="Nachweis anlegen (Hash als JSON, poe oder write)", description=POE_CREATE_DESCRIPTION, status_code=201)
 async def poe_create(body: PoeCreate, request: Request, level: int = Depends(require("poe"))):
-    return await _poe_create(check_hash(body.hash), body.filename, body.note, public=(level == LEVELS["poe"]), ip=client_ip(request), reanchor=body.reanchor)
+    return await _poe_create(
+        check_hash(body.hash), body.filename, body.note,
+        public=(level == LEVELS["poe"]), ip=client_ip(request), reanchor=body.reanchor, key_id=getattr(request.state, "api_key_id", None),
+    )
 
 
 @app.post("/v1/poe/file", tags=["Proof of Existence"], summary="Nachweis anlegen (Datei hochladen, poe oder write)", description=POE_CREATE_DESCRIPTION + " reanchor ist hier ein Formularfeld (true oder false).", status_code=201)
@@ -1164,12 +1263,18 @@ async def poe_create_file(
     level: int = Depends(require("poe")),
 ):
     hash_hex, size = await hash_upload(file)
-    result = await _poe_create(hash_hex, file.filename, note, public=(level == LEVELS["poe"]), ip=client_ip(request), reanchor=reanchor)
+    result = await _poe_create(
+        hash_hex, file.filename, note,
+        public=(level == LEVELS["poe"]), ip=client_ip(request), reanchor=reanchor, key_id=getattr(request.state, "api_key_id", None),
+    )
     result["file"] = {"name": file.filename, "size": size}
     return result
 
 
-async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, public: bool = False, ip: str = "", reanchor: bool = False, nokey: bool = False) -> dict:
+async def _poe_create(
+    hash_hex: str, filename: str | None, note: str | None, *,
+    public: bool = False, ip: str = "", reanchor: bool = False, nokey: bool = False, key_id: str | None = None,
+) -> dict:
     current = await poe_status(hash_hex)
     if current["status"] == "confirmed":
         # Block und Zeit der ersten Verankerung nennen, nicht die einer spaeteren Neuregistrierung.
@@ -1195,21 +1300,21 @@ async def _poe_create(hash_hex: str, filename: str | None, note: str | None, *, 
         )
     name = poe_name(hash_hex)
     value = build_poe_value(hash_hex, filename, note)
-    # Kontingentgrenzen: nokey (oeffentlich ohne Schluessel) nutzt engere Grenzen als poe-Schluessel.
-    quota_limits = {}
-    if nokey:
-        quota_limits = {"per_ip_day": settings.poe_nokey_per_ip_day, "per_day": settings.poe_nokey_per_day}
+    # Kontingentgrenzen: nokey (oeffentlich ohne Schluessel) nutzt engere Grenzen als poe-Schluessel,
+    # Schluessel mit eigenem Kontingent zaehlen je Schluessel statt je IP-Adresse.
+    quota_limits = quota_limits_for(key_id, nokey=nokey)
+    ident = ip if nokey else quota_ident(key_id, ip)
     remaining = None
     if public:
         await public_poe_guard()
-        remaining = quota.register(ip, **quota_limits)
+        remaining = quota.register(ident, **quota_limits)
     try:
         txid = await rpc.call("name_doi", name, value, name_options(), wallet=True)
         result = await ensure_accepted(txid)
     except Exception:
         if public:
-            quota.release(ip)
-            remaining = quota.usage(ip, **quota_limits)
+            quota.release(ident)
+            remaining = quota.usage(ident, **quota_limits)
         raise
     result.update(
         {

@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.6.0 (2026-10-12)
+
+Erweiterungen für den Dienst Nachweis (nachweis.doilabs.org, E-Mail-Nachweis auf der Doichain) und alle anderen Anwendungen mit eigenem poe-Schlüssel.
+
+- REST-API: Kontingent je poe-Schlüssel. `DOI_POE_KEY_LIMITS=fingerprint=anzahl,…` gibt einem Schlüssel ein eigenes Tageskontingent, das unabhängig von der IP-Adresse zählt und das Kontingent der öffentlichen App nicht belastet. `DOI_POE_KEYED_PER_DAY` (Standard 1000) ist die gemeinsame Tagesgrenze aller dieser Schlüssel. Der Fingerprint sind die ersten 16 Hexzeichen des SHA-256 des Schlüssels, `GET /v1/poe/quota` nennt ihn als `key_id` und zeigt mit `scope` (`key` oder `ip`), welches Kontingent gilt. Fehlerhafte Einträge brechen den Start mit klarer Meldung ab.
+- REST-API: neuer Endpunkt `GET /v1/tx/{txid}/proof` mit roher Transaktion, 80-Byte-Blockheader, Merkle-Zweig samt Position, berechneter Wurzel, `txoutproof` der Node und `chain_ref` (Fork-Block 431018). Damit lässt sich der Einschluss eines Nachweises ohne diese API nachrechnen, auch nach Ablauf des Namens. Unbestätigte Transaktionen antworten mit 409.
+- Tests: Kontingent je Schlüssel (Zählung, Freigabe bei Fehlschlag, Fingerprint), Merkle-Zweig gegen eine Referenzrechnung, Proof-Endpunkt mit Fake-Block.
+
 ## 1.5.0 (2026-09-27)
 
 Korrekturen aus einem externen Review des MCP-Servers (Bericht für Nico Krause vom 27.09.2026, Issues neubuot/doichain-mcp#3 und #4), am Code und am laufenden Dienst gegengeprüft.

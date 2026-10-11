@@ -12,6 +12,8 @@ from types import SimpleNamespace
 
 WRITE_KEY = "test-write-key-0000000000"
 POE_KEY = "test-poe-key-00000000000000"
+POE_KEY_KEYED = "test-poe-key-nachweis-0000000"
+KEYED_ID = hashlib.sha256(POE_KEY_KEYED.encode()).hexdigest()[:16]
 
 os.environ.update(
     {
@@ -19,7 +21,9 @@ os.environ.update(
         "DOI_API_KEYS_READ": "",
         "DOI_API_KEYS_ADMIN": "",
         "DOI_API_KEYS_WRITE": WRITE_KEY,
-        "DOI_API_KEYS_POE": POE_KEY,
+        "DOI_API_KEYS_POE": POE_KEY + "," + POE_KEY_KEYED,
+        "DOI_POE_KEY_LIMITS": KEYED_ID + "=2",
+        "DOI_POE_KEYED_PER_DAY": "3",
         "DOI_STATE_DIR": tempfile.mkdtemp(prefix="doichain-api-test-"),
         "DOI_RPC_URL": "http://127.0.0.1:9/",
         "DOI_RPC_USER": "",
@@ -440,3 +444,126 @@ def request_from(host):
 )
 def test_client_ip(host, expected):
     assert main.client_ip(request_from(host)) == expected
+
+
+# ---------------------------------------------------------------------------
+# Kontingent je Schluessel (1.6.0)
+# ---------------------------------------------------------------------------
+
+def test_keyed_quota_counts_per_key_and_reports_key_id(node, client):
+    before = quota.usage("testclient")["used_ip"]
+    q = client.get("/v1/poe/quota", headers={"X-API-Key": POE_KEY_KEYED}).json()
+    assert q["key_id"] == KEYED_ID and q["scope"] == "key" and q["per_ip_day"] == 2 and q["per_day"] == 3
+    r1 = client.post("/v1/poe", json={"hash": "c1" * 32, "note": "eins"}, headers={"X-API-Key": POE_KEY_KEYED})
+    r2 = client.post("/v1/poe", json={"hash": "c2" * 32, "note": "zwei"}, headers={"X-API-Key": POE_KEY_KEYED})
+    assert r1.status_code == 201 and r2.status_code == 201
+    assert r2.json()["quota"]["remaining_ip"] == 0 and r2.json()["quota"]["scope"] == "key"
+    r3 = client.post("/v1/poe", json={"hash": "c3" * 32, "note": "drei"}, headers={"X-API-Key": POE_KEY_KEYED})
+    assert r3.status_code == 429
+    assert "Schluessels" in r3.json()["error"]["message"]
+    # Das IP-Kontingent der oeffentlichen App bleibt unberuehrt.
+    assert quota.usage("testclient")["used_ip"] == before
+    assert quota.usage("testclient")["used_total"] == before
+    # Der oeffentliche poe-Schluessel zaehlt weiter je IP und nennt seinen Fingerprint.
+    q2 = client.get("/v1/poe/quota", headers={"X-API-Key": POE_KEY}).json()
+    assert q2["scope"] == "ip" and q2["key_id"] == hashlib.sha256(POE_KEY.encode()).hexdigest()[:16]
+
+
+def test_keyed_quota_released_when_anchoring_fails(node, client, monkeypatch):
+    async def failing_call(method, *params, wallet=False, named=None):
+        if method == "name_doi":
+            raise RPCError(-6, "Insufficient funds")
+        return await node.call(method, *params, wallet=wallet, named=named)
+    monkeypatch.setattr(main.rpc, "call", failing_call)
+    ident = quota.KEY_PREFIX + KEYED_ID
+    before = quota.usage(ident, per_ip_day=2, per_day=3)["used_ip"]
+    response = client.post("/v1/poe", json={"hash": "c4" * 32}, headers={"X-API-Key": POE_KEY_KEYED})
+    assert response.status_code != 201
+    assert quota.usage(ident, per_ip_day=2, per_day=3)["used_ip"] == before
+
+
+def test_key_fingerprint_is_stable():
+    from doichain_api.auth import key_fingerprint
+    assert key_fingerprint(POE_KEY_KEYED) == KEYED_ID
+    assert len(key_fingerprint("x" * 20)) == 16
+
+
+# ---------------------------------------------------------------------------
+# Einschlussnachweis GET /v1/tx/{txid}/proof (1.6.0)
+# ---------------------------------------------------------------------------
+
+def sha256d(data: bytes) -> bytes:
+    return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
+def reference_root(txids: list[str]) -> str:
+    level = [bytes.fromhex(t)[::-1] for t in txids]
+    while len(level) > 1:
+        if len(level) % 2:
+            level.append(level[-1])
+        level = [sha256d(level[i] + level[i + 1]) for i in range(0, len(level), 2)]
+    return level[0][::-1].hex()
+
+
+def apply_branch(txid_hex: str, branch: list[str], index: int) -> str:
+    h = bytes.fromhex(txid_hex)[::-1]
+    for sibling in branch:
+        s = bytes.fromhex(sibling)[::-1]
+        h = sha256d(s + h) if index & 1 else sha256d(h + s)
+        index //= 2
+    return h[::-1].hex()
+
+
+@pytest.mark.parametrize("n_tx,index", [(1, 0), (2, 1), (3, 2), (5, 3)])
+def test_merkle_branch_reaches_root(n_tx, index):
+    txids = [hashlib.sha256(f"tx{i}".encode()).hexdigest() for i in range(n_tx)]
+    branch, root = main.merkle_branch(txids, index)
+    assert root == reference_root(txids)
+    assert apply_branch(txids[index], branch, index) == root
+    assert len(branch) == (0 if n_tx == 1 else (n_tx - 1).bit_length())
+
+
+def fake_block(txids: list[str]) -> tuple[str, str]:
+    """Header mit passender Merkle-Wurzel, Blockhash ist das doppelte SHA-256 des Headers."""
+    root = bytes.fromhex(reference_root(txids))[::-1]
+    header = (1).to_bytes(4, "little") + b"\x11" * 32 + root + (1_790_000_000).to_bytes(4, "little") + b"\xff\xff\x00\x1d" + (7).to_bytes(4, "little")
+    assert len(header) == 80
+    return header.hex(), sha256d(header)[::-1].hex()
+
+
+def test_tx_proof_delivers_header_branch_and_txoutproof(node, client, monkeypatch):
+    txids = [hashlib.sha256(f"block-tx{i}".encode()).hexdigest() for i in range(3)]
+    header_hex, block_hash = fake_block(txids)
+    target = txids[2]
+
+    async def fake_call(method, *params, wallet=False, named=None):
+        if method == "getrawtransaction":
+            return {"txid": params[0], "hex": "00aa", "blockhash": block_hash, "confirmations": 9}
+        if method == "getblock" and params[1] == 1:
+            return {"hash": block_hash, "height": 435900, "time": 1_790_000_000, "merkleroot": reference_root(txids), "tx": txids}
+        if method == "getblock" and params[1] == 0:
+            return header_hex + "deadbeef"
+        if method == "gettxoutproof":
+            assert params[0] == [target] and params[1] == block_hash
+            return "0100proof"
+        raise AssertionError(method)
+    monkeypatch.setattr(main.rpc, "call", fake_call)
+    response = client.get(f"/v1/tx/{target}/proof")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["block"]["header_hex"] == header_hex and body["block"]["header_matches_hash"] is True
+    assert body["merkle_root_matches"] is True and body["tx_index"] == 2
+    assert apply_branch(target, body["merkle_branch"], body["tx_index"]) == body["block"]["merkleroot"]
+    assert body["txoutproof_hex"] == "0100proof" and body["tx_hex"] == "00aa"
+    assert body["chain_ref"]["height"] == 431018
+    assert body["block"]["time_iso"].endswith("Z")
+
+
+def test_tx_proof_unconfirmed_gives_409(node, client, monkeypatch):
+    async def fake_call(method, *params, wallet=False, named=None):
+        if method == "getrawtransaction":
+            return {"txid": params[0], "hex": "00aa"}
+        raise AssertionError(method)
+    monkeypatch.setattr(main.rpc, "call", fake_call)
+    response = client.get("/v1/tx/" + "d" * 64 + "/proof")
+    assert response.status_code == 409

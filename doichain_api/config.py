@@ -15,6 +15,23 @@ def _bool(value: str, default: bool) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "ja", "on")
 
 
+def _key_limits(value: str) -> dict[str, int]:
+    """DOI_POE_KEY_LIMITS: "fingerprint=je_tag,fingerprint=je_tag". Der Fingerprint eines Schluessels sind die
+    ersten 16 Hexzeichen seines SHA-256 (GET /v1/poe/quota nennt ihn als key_id). Fehler brechen den Start ab."""
+    limits: dict[str, int] = {}
+    for item in _csv(value):
+        if "=" not in item:
+            raise RuntimeError(f"DOI_POE_KEY_LIMITS: Eintrag '{item}' braucht die Form fingerprint=anzahl")
+        fingerprint, _, number = item.partition("=")
+        fingerprint = fingerprint.strip().lower()
+        if len(fingerprint) != 16 or any(c not in "0123456789abcdef" for c in fingerprint):
+            raise RuntimeError(f"DOI_POE_KEY_LIMITS: '{fingerprint}' ist kein Fingerprint (16 Hexzeichen)")
+        if not number.strip().isdigit() or int(number) < 1:
+            raise RuntimeError(f"DOI_POE_KEY_LIMITS: Anzahl fuer {fingerprint} muss eine positive Zahl sein")
+        limits[fingerprint] = int(number)
+    return limits
+
+
 @dataclass(frozen=True)
 class Settings:
     rpc_url: str = os.environ.get("DOI_RPC_URL", "http://127.0.0.1:8339/")
@@ -35,6 +52,10 @@ class Settings:
     # Schluessellos: noch engere Grenzen fuer POST /v1/poe/public (ganz ohne API-Key).
     poe_nokey_per_ip_day: int = int(os.environ.get("DOI_POE_NOKEY_PER_IP_DAY", "3"))
     poe_nokey_per_day: int = int(os.environ.get("DOI_POE_NOKEY_PER_DAY", "50"))
+    # Eigenes Tageskontingent je poe-Schluessel (unabhaengig von der IP-Adresse) und die gemeinsame
+    # Tagesgrenze aller dieser Schluessel, damit das Wallet geschuetzt bleibt.
+    poe_key_limits: dict[str, int] = field(default_factory=lambda: _key_limits(os.environ.get("DOI_POE_KEY_LIMITS", "")))
+    poe_keyed_per_day: int = int(os.environ.get("DOI_POE_KEYED_PER_DAY", "1000"))
     state_dir: str = os.environ.get("DOI_STATE_DIR", "/var/lib/doichain-api")
     poe_prefix: str = os.environ.get("DOI_POE_PREFIX", "poe/")
     max_upload_bytes: int = int(os.environ.get("DOI_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
@@ -44,7 +65,7 @@ class Settings:
     # Namecoin-Grenzen, die Doichain Core 31 erbt.
     max_name_length: int = 255
     max_value_length: int = 520
-    api_version: str = "1.5.0"
+    api_version: str = "1.6.0"
 
 
 settings = Settings()

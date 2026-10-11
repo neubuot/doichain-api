@@ -3,6 +3,7 @@ admin (Wallet-Auszahlungen, generischer RPC). Schluessel kommen per Header
 X-API-Key oder Authorization: Bearer <key>. Beide Wege sind als OpenAPI-Sicherheitsschema
 deklariert, damit /docs den Authorize-Dialog anbietet."""
 
+import hashlib
 import secrets
 
 from fastapi import HTTPException, Request, Security
@@ -29,6 +30,12 @@ bearer_scheme = HTTPBearer(
 def _same(candidate: str, key: str) -> bool:
     """Zeitkonstanter Vergleich auf Byte-Ebene, damit auch Nicht-ASCII-Zeichen keinen Fehler ausloesen."""
     return secrets.compare_digest(candidate.encode("utf-8"), key.encode("utf-8", "surrogateescape"))
+
+
+def key_fingerprint(key: str) -> str:
+    """Oeffentlich nennbare Kennung eines Schluessels: die ersten 16 Hexzeichen seines SHA-256.
+    Damit lassen sich Kontingente je Schluessel konfigurieren (DOI_POE_KEY_LIMITS), ohne den Schluessel zu wiederholen."""
+    return hashlib.sha256(key.encode("utf-8", "surrogateescape")).hexdigest()[:16]
 
 
 def key_level(key: str | None) -> int:
@@ -62,6 +69,8 @@ def require(level: str):
         # Nur gewoehnliche Leerzeichen und Tabs abschneiden, geschuetzte Leerzeichen bleiben Kopierfehler.
         key = (api_key or "").strip(" \t") or (bearer.credentials.strip(" \t") if bearer and bearer.credentials else "")
         have = key_level(key or None)
+        # Fingerprint des erkannten Schluessels fuer Kontingente je Schluessel (None ohne gueltigen Schluessel).
+        request.state.api_key_id = key_fingerprint(key) if have else None
         if needed == LEVELS["read"] and settings.public_read:
             request.state.key_level = max(have, 1)
             return request.state.key_level
