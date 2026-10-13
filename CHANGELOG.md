@@ -13,6 +13,10 @@ Doichain Seal: Siegel für Software-Releases über eine GitHub Action, Abzeichen
 - Neue Abhängigkeit `PyJWT[crypto]`, neue Einstellungen `DOI_SEAL_AUDIENCE`, `DOI_SEAL_PER_REPO_DAY`, `DOI_SEAL_PER_DAY`, `DOI_API_PUBLIC_URL`.
 - Tests: `tests/test_seal.py` (28 Tests) mit lokal erzeugtem RSA-Schlüssel statt der GitHub-JWKS.
 
+## 1.7.1 (2026-10-13)
+
+- Doichain Seal: Meldet die Node „Insufficient funds“, obwohl das Wallet die Reserve hält, antwortet `POST /v1/seal/github` mit 503 und `Retry-After: 600` statt 402. Ursache ist die Mempool-Grenze der Node von 25 verketteten unbestätigten Transaktionen: Jedes Siegel gibt das Wechselgeld des vorigen aus, nach rund 25 Siegeln je Block ist Schluss bis zum nächsten Block. Aufgefallen beim Versiegeln von 26 Repos auf einmal (14 Läufe mit 402). Das Kontingent des Repositories wird in diesem Fall nicht belastet.
+
 ## 1.6.0 (2026-10-12)
 
 Erweiterungen für den Dienst Nachweis (nachweis.doilabs.org, E-Mail-Nachweis auf der Doichain) und alle anderen Anwendungen mit eigenem poe-Schlüssel.

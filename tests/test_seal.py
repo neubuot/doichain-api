@@ -176,9 +176,48 @@ def test_failed_anchoring_releases_repo_quota(node, client, monkeypatch):
     original = node.call
     monkeypatch.setattr(main.rpc, "call", failing)
     response = client.post("/v1/seal/github", json={"hash": HASH}, headers=auth(make_token()))
-    assert response.status_code == 402
+    # Fake-Node hat Guthaben, deshalb gilt der Fehlschlag als Kettenlimit (503), nicht als leeres Wallet
+    assert response.status_code == 503
     assert quota.usage(quota.GH_PREFIX + REPO)["used_ip"] == 0
     assert seals.for_repo(REPO) == []
+
+
+def test_chain_limit_gives_503_with_retry_after(node, client, monkeypatch):
+    async def busy(method, *params, **kwargs):
+        if method == "name_doi":
+            raise main.RPCError(-6, "Insufficient funds")
+        return await original(method, *params, **kwargs)
+
+    original = node.call
+    monkeypatch.setattr(main.rpc, "call", busy)
+    response = client.post("/v1/seal/github", json={"hash": HASH}, headers=auth(make_token()))
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "600"
+    assert "next Doichain block" in response.json()["error"]["message"]
+    assert quota.usage(quota.GH_PREFIX + REPO)["used_ip"] == 0
+
+
+def test_real_insufficient_funds_stays_402(node, client, monkeypatch):
+    async def broke(method, *params, **kwargs):
+        if method == "name_doi":
+            raise main.RPCError(-6, "Insufficient funds")
+        if method == "getbalances":
+            return {"mine": {"trusted": 100.0, "untrusted_pending": 0.0, "immature": 0.0}} if not broke.after_guard else {"mine": {"trusted": 0.5, "untrusted_pending": 0.0}}
+        return await original(method, *params, **kwargs)
+
+    # Erster getbalances-Aufruf ist die Reserve-Pruefung vor dem Verankern, danach ist das Wallet leer.
+    broke.after_guard = False
+    original = node.call
+
+    async def wrapper(method, *params, **kwargs):
+        result = await broke(method, *params, **kwargs)
+        if method == "getbalances":
+            broke.after_guard = True
+        return result
+
+    monkeypatch.setattr(main.rpc, "call", wrapper)
+    response = client.post("/v1/seal/github", json={"hash": HASH}, headers=auth(make_token()))
+    assert response.status_code == 402
 
 
 def test_branch_ref_uses_branch_name_as_tag(node, client):

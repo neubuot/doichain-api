@@ -1374,6 +1374,15 @@ def check_github_name(owner: str, name: str) -> tuple[str, str]:
     return owner, name
 
 
+async def wallet_has_reserve() -> bool:
+    """True, wenn das Wallet mehr als die Reserve haelt (bestaetigt plus unbestaetigt eigene Aenderungen)."""
+    try:
+        balances = (await rpc.call("getbalances", wallet=True))["mine"]
+        return float(balances.get("trusted", 0)) + float(balances.get("untrusted_pending", 0)) >= PUBLIC_POE_RESERVE
+    except (RPCError, KeyError, TypeError, ValueError):
+        return False
+
+
 async def github_identity(request: Request) -> GithubIdentity:
     auth = request.headers.get("authorization", "")
     if not auth.lower().startswith("bearer "):
@@ -1424,11 +1433,23 @@ async def seal_github(body: SealCreate, request: Request, response: Response):
         response.status_code = 200
         return {"status": "already_anchored", "hash": hash_hex, "name": current["name"], "repository": identity.repository, "ref": identity.short_ref, "sha": identity.sha, **links, "proof": current, "seal": seals.public_row(row)}
     extra = {"gh": {"repo": identity.repository, "ref": identity.short_ref[:60], "sha": identity.sha[:12]}}
-    result = await _poe_create(
-        hash_hex, body.filename, body.note, public=True, ip=client_ip(request), extra=extra,
-        ident_override=quota.GH_PREFIX + identity.repository.lower(),
-        limits_override={"per_ip_day": settings.seal_per_repo_day, "per_day": settings.seal_per_day},
-    )
+    try:
+        result = await _poe_create(
+            hash_hex, body.filename, body.note, public=True, ip=client_ip(request), extra=extra,
+            ident_override=quota.GH_PREFIX + identity.repository.lower(),
+            limits_override={"per_ip_day": settings.seal_per_repo_day, "per_day": settings.seal_per_day},
+        )
+    except RPCError as exc:
+        # "Insufficient funds" trotz Guthaben: Alle Coins haengen in einer Kette unbestaetigter Siegel, die
+        # Node nimmt hoechstens 25 verkettete Transaktionen je Block an. Nach dem naechsten Block geht es weiter.
+        if exc.code == -6 and await wallet_has_reserve():
+            raise HTTPException(
+                503,
+                "Seal service is busy: too many seals are waiting for the next Doichain block (chain limit of the node). "
+                "Retry in about 10 minutes, the quota of this repository was not charged",
+                headers={"Retry-After": "600"},
+            )
+        raise
     row = seals.add(**index_args, txid=result["txid"], anchored_here=True)
     logger.info("Seal: %s %s %s -> %s", identity.repository, identity.short_ref, hash_hex[:16], result["txid"])
     return {"status": "anchored", "hash": hash_hex, "name": result["name"], "repository": identity.repository, "ref": identity.short_ref, "sha": identity.sha, **links, "anchoring": result, "seal": seals.public_row(row)}
