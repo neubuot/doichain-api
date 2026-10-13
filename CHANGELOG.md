@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.7.0 (2026-10-13)
+
+Doichain Seal: Siegel für Software-Releases über eine GitHub Action, Abzeichen und Prüfseite.
+
+- REST-API: neuer Endpunkt `POST /v1/seal/github`. Ein Workflow mit `permissions: id-token: write` schickt den SHA-256 einer Release-Datei zusammen mit seinem GitHub-OIDC-Token (`Authorization: Bearer`, Zielgruppe `doichain-seal`). Die API prüft Signatur (JWKS von GitHub, PyJWT), Aussteller, Zielgruppe und Ablauf und verankert `poe/<hash>` mit dem Zusatzfeld `gh` (Repository, Ref, Commit) im Wert. Kein Schlüssel nötig, Kontingent je Repository und Tag (`DOI_SEAL_PER_REPO_DAY`, Standard 20) plus gemeinsame Tagesgrenze (`DOI_SEAL_PER_DAY`, Standard 300), eigener Bereich `gh` in der Kontingent-Datenbank. Ein schon verankerter Hash antwortet mit 200 und dem bestehenden Nachweis, ohne Kontingent und ohne Neuverankerung.
+- REST-API: Siegel-Index `seals.db` im StateDirectory (Repository, Tag, Commit, Datei, Größe, Transaktion, Workflow-Lauf). Lesen mit `GET /v1/seal/github/{owner}/{repo}`, `GET /v1/seal/{hash}` (mit `origin.verified`, wenn der Name vom eigenen Wallet geschrieben wurde) und `GET /v1/seal/stats`.
+- Abzeichen als SVG im Stil von shields.io: `GET /seal/github/{owner}/{repo}/badge.svg` (neuestes Siegel mit Tag und Block) und `GET /seal/{hash}/badge.svg`, mit Cache-Control je Status (bestätigt 1 h, wartend 60 s, unbekannt 5 min).
+- Prüfseiten als HTML mit Open-Graph-Karte: `/seal` (Startseite mit Anleitung und Zählern), `/seal/github/{owner}/{repo}` und `/seal/{hash}`. Alle Kettenwerte werden HTML-maskiert. Texte englisch, weil Entwickler weltweit die Zielgruppe sind, ebenso die Fehlertexte des Siegel-Endpunkts.
+- Neue Abhängigkeit `PyJWT[crypto]`, neue Einstellungen `DOI_SEAL_AUDIENCE`, `DOI_SEAL_PER_REPO_DAY`, `DOI_SEAL_PER_DAY`, `DOI_API_PUBLIC_URL`.
+- Tests: `tests/test_seal.py` (28 Tests) mit lokal erzeugtem RSA-Schlüssel statt der GitHub-JWKS.
+
 ## 1.6.0 (2026-10-12)
 
 Erweiterungen für den Dienst Nachweis (nachweis.doilabs.org, E-Mail-Nachweis auf der Doichain) und alle anderen Anwendungen mit eigenem poe-Schlüssel.

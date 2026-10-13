@@ -57,6 +57,14 @@ class Settings:
     poe_key_limits: dict[str, int] = field(default_factory=lambda: _key_limits(os.environ.get("DOI_POE_KEY_LIMITS", "")))
     poe_keyed_per_day: int = int(os.environ.get("DOI_POE_KEYED_PER_DAY", "1000"))
     state_dir: str = os.environ.get("DOI_STATE_DIR", "/var/lib/doichain-api")
+    # Siegel fuer Software-Releases (GitHub Action "Doichain Seal"): Der Runner weist sich mit einem
+    # OIDC-Token von GitHub aus, Kontingent je Repository und Tag plus gemeinsame Tagesgrenze.
+    seal_audience: str = os.environ.get("DOI_SEAL_AUDIENCE", "doichain-seal")
+    seal_per_repo_day: int = int(os.environ.get("DOI_SEAL_PER_REPO_DAY", "20"))
+    seal_per_day: int = int(os.environ.get("DOI_SEAL_PER_DAY", "300"))
+    # Oeffentliche Adresse der API fuer absolute Links (Abzeichen, Pruefseite, Open-Graph-Karten).
+    public_url: str = os.environ.get("DOI_API_PUBLIC_URL", "https://doi-api.sendlabs.de").rstrip("/")
+    github_oidc_issuer: str = "https://token.actions.githubusercontent.com"
     poe_prefix: str = os.environ.get("DOI_POE_PREFIX", "poe/")
     max_upload_bytes: int = int(os.environ.get("DOI_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
     # Sicherheits-Fork vom September 2026: erster Block, der nur auf der Doichain-Kette existiert.
@@ -65,7 +73,7 @@ class Settings:
     # Namecoin-Grenzen, die Doichain Core 31 erbt.
     max_name_length: int = 255
     max_value_length: int = 520
-    api_version: str = "1.6.0"
+    api_version: str = "1.7.0"
 
 
 settings = Settings()

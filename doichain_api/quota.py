@@ -6,7 +6,8 @@ damit je IP-Adresse und insgesamt pro Tag entstehen duerfen. Schluessel mit eige
 Tagesgrenze (DOI_POE_KEYED_PER_DAY). Zaehler liegen in einer kleinen SQLite-Datei im StateDirectory des
 Dienstes, damit beide uvicorn-Worker dieselben Zahlen sehen.
 
-Die Zaehler-Identitaet ist entweder die IP-Adresse (Bereich "ip") oder "key:<fingerprint>" (Bereich "key").
+Die Zaehler-Identitaet ist entweder die IP-Adresse (Bereich "ip"), "key:<fingerprint>" (Bereich "key") oder
+"gh:<owner/repo>" (Bereich "gh", Siegel fuer Software-Releases ueber GitHub Actions, gezaehlt je Repository).
 Gesamtsummen werden je Bereich gebildet, Nachweise mit Schluesselkontingent belasten also nicht das
 Kontingent der oeffentlichen App und umgekehrt."""
 
@@ -19,6 +20,7 @@ from .config import settings
 
 _lock = threading.Lock()
 KEY_PREFIX = "key:"
+GH_PREFIX = "gh:"
 
 
 class QuotaExceeded(Exception):
@@ -30,7 +32,11 @@ def _today() -> str:
 
 
 def _scope(ident: str) -> str:
-    return "key" if ident.startswith(KEY_PREFIX) else "ip"
+    if ident.startswith(KEY_PREFIX):
+        return "key"
+    if ident.startswith(GH_PREFIX):
+        return "gh"
+    return "ip"
 
 
 def _connect() -> sqlite3.Connection:
@@ -45,8 +51,9 @@ def _connect() -> sqlite3.Connection:
 def _total(conn: sqlite3.Connection, day: str, scope: str) -> int:
     """Summe des Tages im selben Bereich (IP-Adressen oder Schluessel)."""
     row = conn.execute(
-        "select coalesce(sum(n), 0) from poe_usage where day = ? and (case when substr(ip, 1, ?) = ? then 'key' else 'ip' end) = ?",
-        (day, len(KEY_PREFIX), KEY_PREFIX, scope),
+        "select coalesce(sum(n), 0) from poe_usage where day = ? and "
+        "(case when substr(ip, 1, ?) = ? then 'key' when substr(ip, 1, ?) = ? then 'gh' else 'ip' end) = ?",
+        (day, len(KEY_PREFIX), KEY_PREFIX, len(GH_PREFIX), GH_PREFIX, scope),
     ).fetchone()
     return int(row[0])
 
@@ -100,10 +107,14 @@ def register(ident: str, *, per_ip_day: int | None = None, per_day: int | None =
             used = int(row[0]) if row else 0
             total = _total(conn, day, scope)
             if used >= per_ip_day:
+                if scope == "gh":
+                    raise QuotaExceeded(f"Daily seal quota of this repository is used up ({per_ip_day} seals per day). Try again tomorrow or ask the operator for a higher quota")
                 if scope == "key":
                     raise QuotaExceeded(f"Tageskontingent dieses Schluessels erschoepft ({per_ip_day} Nachweise je Tag). Morgen wieder oder Kontingent beim Betreiber erhoehen lassen")
                 raise QuotaExceeded(f"Tageskontingent dieser Adresse erschoepft ({per_ip_day} Nachweise je Tag). Morgen wieder oder mit eigenem write-Schluessel")
             if total >= per_day:
+                if scope == "gh":
+                    raise QuotaExceeded(f"Shared daily seal quota of the GitHub integration is used up ({per_day} seals per day). Try again tomorrow")
                 if scope == "key":
                     raise QuotaExceeded(f"Gemeinsames Tageskontingent aller Schluessel erschoepft ({per_day} Nachweise je Tag). Morgen wieder")
                 raise QuotaExceeded(f"Tageskontingent der oeffentlichen App erschoepft ({per_day} Nachweise je Tag). Morgen wieder oder mit eigenem write-Schluessel")

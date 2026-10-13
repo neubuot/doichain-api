@@ -5,8 +5,10 @@ Adressen (ueber den lokalen ElectrumX), Namensoperationen (name_doi, name_show, 
 Proof of Existence (PoE) und Wallet-Funktionen. Interaktive Doku unter /docs.
 """
 
+import asyncio
 import hashlib
 import ipaddress
+import os
 import json
 import logging
 import re
@@ -20,15 +22,16 @@ from typing import Any
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Path, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import quota
+from . import quota, seals
 from .auth import LEVELS, auth_level_of, require
 from .config import settings
 from .electrum import AddressError, ElectrumError, electrum_call, scripthash_for_address
+from .github_oidc import GithubIdentity, OidcError, verify_github_token
 from .rpc import NodeUnavailable, RPCError, rpc
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -112,6 +115,7 @@ TAGS = [
     {"name": "Adressen", "description": "Guthaben, Historie und UTXOs beliebiger Adressen (ElectrumX)"},
     {"name": "Namen", "description": "Namecoin-artige Namen und die Doichain-Operation name_doi"},
     {"name": "Proof of Existence", "description": "Dokument-Hashes als Namen verankern und pruefen"},
+    {"name": "Seal", "description": "Doichain Seal: Siegel fuer Software-Releases. Eine GitHub Action weist sich per OIDC-Token aus, die API verankert den Hash der Release-Datei mit Repository, Ref und Commit. Abzeichen und Pruefseite unter /seal"},
     {"name": "Wallet", "description": "Wallet der Node (nur mit Schluessel)"},
     {"name": "Werkzeuge", "description": "Adresspruefung, Nachrichten signieren, Gebuehren, generischer RPC"},
 ]
@@ -388,14 +392,17 @@ def poe_name(hash_hex: str) -> str:
     return settings.poe_prefix + hash_hex
 
 
-def build_poe_value(hash_hex: str, filename: str | None, note: str | None) -> str:
+def build_poe_value(hash_hex: str, filename: str | None, note: str | None, extra: dict | None = None) -> str:
     """Wert des PoE-Namens. Grenzen: Dateiname 80 Zeichen, Notiz 160 Zeichen, gesamt 520 Byte UTF-8.
-    Wird die Bytegrenze durch Mehrbyte-Zeichen ueberschritten, lehnt die API ab statt still zu kuerzen."""
+    Wird die Bytegrenze durch Mehrbyte-Zeichen ueberschritten, lehnt die API ab statt still zu kuerzen.
+    extra haengt weitere Felder an (Doichain Seal: gh mit Repository, Ref und Commit)."""
     value: dict[str, Any] = {"v": 1, "alg": "sha256", "hash": hash_hex, "ts": iso(int(time.time()))}
     if filename and filename.strip():
         value["file"] = filename.strip()[:80]
     if note and note.strip():
         value["note"] = note.strip()[:160]
+    if extra:
+        value.update(extra)
     encoded = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
     size = len(encoded.encode("utf-8"))
     if size > settings.max_value_length:
@@ -1274,6 +1281,7 @@ async def poe_create_file(
 async def _poe_create(
     hash_hex: str, filename: str | None, note: str | None, *,
     public: bool = False, ip: str = "", reanchor: bool = False, nokey: bool = False, key_id: str | None = None,
+    extra: dict | None = None, ident_override: str | None = None, limits_override: dict | None = None,
 ) -> dict:
     current = await poe_status(hash_hex)
     if current["status"] == "confirmed":
@@ -1299,11 +1307,11 @@ async def _poe_create(
             f"Wer das bewusst will, sendet reanchor=true. Details unter GET /v1/poe/{hash_hex}",
         )
     name = poe_name(hash_hex)
-    value = build_poe_value(hash_hex, filename, note)
+    value = build_poe_value(hash_hex, filename, note, extra)
     # Kontingentgrenzen: nokey (oeffentlich ohne Schluessel) nutzt engere Grenzen als poe-Schluessel,
-    # Schluessel mit eigenem Kontingent zaehlen je Schluessel statt je IP-Adresse.
-    quota_limits = quota_limits_for(key_id, nokey=nokey)
-    ident = ip if nokey else quota_ident(key_id, ip)
+    # Schluessel mit eigenem Kontingent zaehlen je Schluessel statt je IP-Adresse, Siegel je Repository.
+    quota_limits = limits_override if limits_override is not None else quota_limits_for(key_id, nokey=nokey)
+    ident = ident_override or (ip if nokey else quota_ident(key_id, ip))
     remaining = None
     if public:
         await public_poe_guard()
@@ -1330,6 +1338,193 @@ async def _poe_create(
     if remaining is not None:
         result["quota"] = remaining
     return result
+
+
+# ---------------------------------------------------------------------------
+# Doichain Seal: Siegel fuer Software-Releases (GitHub Action mit OIDC)
+# ---------------------------------------------------------------------------
+
+GITHUB_OWNER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")
+GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+# Hoechstens so viele Nachweise einer Repository-Liste werden live gegen die Kette geprueft.
+SEAL_LIVE_STATUSES = 10
+
+SEAL_CREATE_DESCRIPTION = (
+    "Seals a release file: anchors poe/<sha256> on the Doichain with repository, ref and commit taken from a "
+    "GitHub Actions OIDC token (Authorization: Bearer <token>, audience 'doichain-seal', job permission "
+    "id-token: write). No API key is needed, the quota counts per repository and day (DOI_SEAL_PER_REPO_DAY) "
+    "with a shared daily limit (DOI_SEAL_PER_DAY). Responds 201 with the new anchoring, or 200 if the hash was "
+    "already anchored (then the existing proof is returned and the file is only recorded in the seal index). "
+    "Repository, ref, commit and file name become public on the chain. Error texts of this endpoint are English "
+    "because they appear in workflow logs."
+)
+
+
+class SealCreate(BaseModel):
+    hash: str = Field(..., description="SHA-256 of the release file, 64 hex characters", examples=["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"])
+    filename: str | None = Field(None, max_length=80, description="File name as published (public on the chain), at most 80 characters")
+    size: int | None = Field(None, ge=0, description="File size in bytes (only stored in the seal index, not on the chain)")
+    note: str | None = Field(None, max_length=60, description="Optional note, at most 60 characters (public on the chain)")
+
+
+def check_github_name(owner: str, name: str) -> tuple[str, str]:
+    if not GITHUB_OWNER_RE.match(owner) or not GITHUB_REPO_RE.match(name) or name in (".", ".."):
+        raise HTTPException(400, "owner or repository name is not a valid GitHub name")
+    return owner, name
+
+
+async def github_identity(request: Request) -> GithubIdentity:
+    auth = request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        raise HTTPException(401, "Send the GitHub OIDC token as 'Authorization: Bearer <token>'", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        return await verify_github_token(auth[7:])
+    except OidcError as exc:
+        raise HTTPException(401, str(exc), headers={"WWW-Authenticate": "Bearer"})
+
+
+def seal_links(hash_hex: str, repository: str | None) -> dict:
+    base = settings.public_url
+    links = {
+        "proof_url": f"{base}/seal/{hash_hex}",
+        "badge_url": f"{base}/seal/{hash_hex}/badge.svg",
+        "api_url": f"{base}/v1/poe/{hash_hex}",
+        "verifile_url": f"https://verifile.it/#{hash_hex}",
+    }
+    if repository:
+        links["repo_page_url"] = f"{base}/seal/github/{repository}"
+        links["repo_badge_url"] = f"{base}/seal/github/{repository}/badge.svg"
+        links["badge_markdown"] = f"[![Doichain Seal]({links['repo_badge_url']})]({links['repo_page_url']})"
+    return links
+
+
+async def seal_statuses(hashes: list[str]) -> dict[str, dict]:
+    """Kettenstatus mehrerer Hashes gleichzeitig, Fehler einzelner Hashes ergeben keinen Eintrag."""
+    unique: list[str] = []
+    for h in hashes:
+        if h not in unique:
+            unique.append(h)
+    unique = unique[:SEAL_LIVE_STATUSES]
+    results = await asyncio.gather(*(poe_status(h) for h in unique), return_exceptions=True)
+    return {h: r for h, r in zip(unique, results) if isinstance(r, dict)}
+
+
+@app.post("/v1/seal/github", tags=["Seal"], summary="Release-Datei per GitHub-Actions-OIDC-Token versiegeln", description=SEAL_CREATE_DESCRIPTION, status_code=201, responses={200: {"description": "Hash war schon verankert, bestehender Nachweis"}})
+async def seal_github(body: SealCreate, request: Request, response: Response):
+    identity = await github_identity(request)
+    hash_hex = check_hash(body.hash)
+    check_github_name(identity.owner, identity.name)
+    current = await poe_status(hash_hex)
+    index_args = dict(hash_hex=hash_hex, repo=identity.repository, ref=identity.ref, tag=identity.short_ref, sha=identity.sha, file=blank_to_none(body.filename), size=body.size, run_id=identity.run_id)
+    links = seal_links(hash_hex, identity.repository)
+    if current["status"] != "unknown":
+        first = current.get("first_anchored") or {}
+        row = seals.add(**index_args, txid=first.get("txid") or current.get("txid"), anchored_here=False)
+        response.status_code = 200
+        return {"status": "already_anchored", "hash": hash_hex, "name": current["name"], "repository": identity.repository, "ref": identity.short_ref, "sha": identity.sha, **links, "proof": current, "seal": seals.public_row(row)}
+    extra = {"gh": {"repo": identity.repository, "ref": identity.short_ref[:60], "sha": identity.sha[:12]}}
+    result = await _poe_create(
+        hash_hex, body.filename, body.note, public=True, ip=client_ip(request), extra=extra,
+        ident_override=quota.GH_PREFIX + identity.repository.lower(),
+        limits_override={"per_ip_day": settings.seal_per_repo_day, "per_day": settings.seal_per_day},
+    )
+    row = seals.add(**index_args, txid=result["txid"], anchored_here=True)
+    logger.info("Seal: %s %s %s -> %s", identity.repository, identity.short_ref, hash_hex[:16], result["txid"])
+    return {"status": "anchored", "hash": hash_hex, "name": result["name"], "repository": identity.repository, "ref": identity.short_ref, "sha": identity.sha, **links, "anchoring": result, "seal": seals.public_row(row)}
+
+
+@app.get("/v1/seal/stats", tags=["Seal"], summary="Zaehler des Siegel-Index (Siegel, Repositories, heute)")
+async def seal_stats():
+    return seals.stats()
+
+
+@app.get("/v1/seal/github/{owner}/{name}", tags=["Seal"], summary="Siegel eines Repositories (Index, die neuesten mit Kettenstatus)")
+async def seal_repo(owner: str = Path(..., description="GitHub owner"), name: str = Path(..., description="Repository name"), limit: int = Query(20, ge=1, le=50, description="Number of index entries, newest first")):
+    check_github_name(owner, name)
+    rows = seals.for_repo(f"{owner}/{name}", limit)
+    statuses = await seal_statuses([r["hash"] for r in rows])
+    items = [{**seals.public_row(r), "proof": statuses.get(r["hash"])} for r in rows]
+    return {"repository": rows[0]["repo"] if rows else f"{owner}/{name}", "count": len(rows), "latest": items[0] if items else None, "seals": items, **{k: v for k, v in seal_links("", f"{owner}/{name}").items() if k.startswith("repo")}}
+
+
+@app.get("/v1/seal/{hash}", tags=["Seal"], summary="Nachweis plus Herkunft und Indexeintraege zu einem Hash")
+async def seal_hash(hash: str = Path(..., description="SHA-256, 64 hex characters")):
+    hash_hex = check_hash(hash)
+    status_ = await poe_status(hash_hex)
+    rows = seals.for_hash(hash_hex)
+    gh = seals.origin_of(status_)
+    return {
+        "hash": hash_hex,
+        "status": status_["status"],
+        "origin": {**gh, "verified": bool(status_.get("owned_by_this_wallet"))} if gh else None,
+        "proof": status_,
+        "seals": [seals.public_row(r) for r in rows],
+        **seal_links(hash_hex, gh.get("repo") if gh and isinstance(gh.get("repo"), str) else None),
+    }
+
+
+def svg_response(svg: str, max_age: int) -> Response:
+    return Response(content=svg, media_type="image/svg+xml; charset=utf-8", headers={"Cache-Control": f"public, max-age={max_age}", "X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/seal", tags=["Seal"], summary="Startseite Doichain Seal (HTML)", response_class=HTMLResponse)
+async def seal_index_page():
+    return HTMLResponse(seals.page_index(seals.stats()), headers={"Cache-Control": "public, max-age=120"})
+
+
+@app.get("/seal/", include_in_schema=False)
+async def seal_index_slash():
+    return RedirectResponse("/seal", status_code=308)
+
+
+@app.get("/seal/og.png", include_in_schema=False)
+async def seal_og_image():
+    return FileResponse(os.path.join(ASSETS_DIR, "og-seal.png"), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/seal/favicon.svg", include_in_schema=False)
+async def seal_favicon():
+    return svg_response(seals.FAVICON_SVG, 86400)
+
+
+@app.get("/seal/github/{owner}/{name}/badge.svg", tags=["Seal"], summary="Abzeichen eines Repositories (neuestes Siegel, SVG)", response_class=Response)
+async def seal_repo_badge(owner: str, name: str):
+    check_github_name(owner, name)
+    rows = seals.for_repo(f"{owner}/{name}", 1)
+    status_ = None
+    if rows:
+        status_ = (await seal_statuses([rows[0]["hash"]])).get(rows[0]["hash"])
+    text, color, max_age = seals.badge_for_status(status_, rows[0]["tag"] if rows else None)
+    if not rows:
+        text = "no seals yet"
+    return svg_response(seals.badge_svg("Doichain seal", text, color), max_age)
+
+
+@app.get("/seal/github/{owner}/{name}", tags=["Seal"], summary="Pruefseite eines Repositories (HTML)", response_class=HTMLResponse)
+async def seal_repo_page(owner: str, name: str):
+    check_github_name(owner, name)
+    rows = seals.for_repo(f"{owner}/{name}", 50)
+    statuses = await seal_statuses([r["hash"] for r in rows])
+    if rows:
+        owner, _, name = rows[0]["repo"].partition("/")
+    return HTMLResponse(seals.page_repo(owner, name, rows, statuses), headers={"Cache-Control": "public, max-age=60"})
+
+
+@app.get("/seal/{hash}/badge.svg", tags=["Seal"], summary="Abzeichen eines Hashes (SVG)", response_class=Response)
+async def seal_hash_badge(hash: str):
+    hash_hex = check_hash(hash)
+    status_ = await poe_status(hash_hex)
+    text, color, max_age = seals.badge_for_status(status_)
+    return svg_response(seals.badge_svg("Doichain seal", text, color), max_age)
+
+
+@app.get("/seal/{hash}", tags=["Seal"], summary="Pruefseite eines Hashes (HTML)", response_class=HTMLResponse)
+async def seal_hash_page(hash: str):
+    hash_hex = check_hash(hash)
+    status_ = await poe_status(hash_hex)
+    rows = seals.for_hash(hash_hex)
+    return HTMLResponse(seals.page_hash(hash_hex, status_, rows), headers={"Cache-Control": "public, max-age=60"})
 
 
 # ---------------------------------------------------------------------------
