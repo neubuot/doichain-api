@@ -248,7 +248,7 @@ im Wert. Kontingent 20 Siegel je Repository und Tag, 300 je Tag insgesamt (`DOI_
 `DOI_SEAL_PER_DAY`), eigener Bereich `gh` in `quota.db`, Index `seals.db` im StateDirectory.
 
 Lesen: `GET /v1/seal/github/{owner}/{repo}`, `GET /v1/seal/{hash}`, `GET /v1/seal/stats`. Abzeichen für READMEs:
-`GET /seal/github/{owner}/{repo}/badge.svg` und `GET /seal/{hash}/badge.svg`. Prüfseiten mit Open-Graph-Karte:
+`GET /seal/github/{owner}/{repo}/seal.svg` (großes Siegel) und `badge.svg` (kompakt), dasselbe je Hash unter `/seal/{hash}/`. Prüfseiten mit Open-Graph-Karte:
 `/seal`, `/seal/github/{owner}/{repo}`, `/seal/{hash}` (englisch). Module `doichain_api/github_oidc.py` und
 `doichain_api/seals.py`, Tests in `tests/test_seal.py`.
 

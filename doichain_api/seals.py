@@ -164,6 +164,66 @@ def badge_svg(label: str, message: str, color: str) -> str:
     )
 
 
+def seal_svg(title: str, line: str, detail: str, color: str) -> str:
+    """Grosses Siegel-Abzeichen (Karte mit Emblem) fuer READMEs und Release-Seiten.
+    title: Tag oder kurzer Name, line: Status (sealed in block 436044, pending, no seal), detail: Datum oder Hinweis."""
+    palette = {"green": "#34d399", "yellow": "#fbbf24", "grey": "#9aa5c4"}
+    accent = palette.get(color, palette["grey"])
+    t, l, d = (html.escape(x, quote=True) for x in (title, line, detail))
+    # Breiten grob schaetzen (Verdana-Faktoren mit Schriftgroesse skaliert) und die Karte daran anpassen.
+    tw = int(_text_width(title) * 15 / 11 * 1.08)
+    lw = int(_text_width(line) * 10.5 / 11)
+    dw = int(_text_width(detail) * 10.5 / 11)
+    width = max(250, 76 + max(tw, lw + dw + 16, 108) + 44)
+    h = 64
+    x = width - 24
+    if color == "green":
+        mark = f'<circle cx="{x}" cy="32" r="9" fill="{accent}" opacity=".16"/><path d="M{x - 4.5} 32.5l3.2 3.2 6.2-6.6" fill="none" stroke="{accent}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'
+    elif color == "yellow":
+        mark = f'<circle cx="{x}" cy="32" r="9" fill="{accent}" opacity=".16"/><circle cx="{x}" cy="32" r="5" fill="none" stroke="{accent}" stroke-width="2"/><path d="M{x} 29.5v3l2 1.5" fill="none" stroke="{accent}" stroke-width="1.8" stroke-linecap="round"/>'
+    else:
+        mark = f'<circle cx="{x}" cy="32" r="9" fill="{accent}" opacity=".16"/><path d="M{x - 4} 32h8" stroke="{accent}" stroke-width="2.2" stroke-linecap="round"/>'
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{h}" viewBox="0 0 {width} {h}" role="img" aria-label="Doichain seal: {t}, {l}, {d}">'
+        f"<title>Doichain seal: {t}, {l}, {d}</title>"
+        '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#172044"/><stop offset="1" stop-color="#0b1020"/></linearGradient>'
+        f'<linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="{accent}"/></linearGradient></defs>'
+        f'<rect x=".5" y=".5" width="{width - 1}" height="{h - 1}" rx="14" fill="url(#bg)" stroke="#2b3a6b"/>'
+        f'<rect x="1.5" y="1.5" width="{width - 3}" height="{h - 3}" rx="13" fill="none" stroke="#ffffff" stroke-opacity=".06"/>'
+        '<g transform="translate(34,32)">'
+        '<circle r="23" fill="#101736" stroke="#2b3a6b"/>'
+        '<circle r="19.5" fill="none" stroke="url(#ring)" stroke-width="1.6" stroke-dasharray="2.2 2.4" opacity=".9"/>'
+        '<circle r="11" fill="none" stroke="#60a5fa" stroke-width="4.5"/>'
+        f'<circle r="3.6" fill="{accent}"/>'
+        "</g>"
+        '<g font-family="Verdana,Geneva,DejaVu Sans,sans-serif">'
+        '<text x="68" y="20" font-size="9" letter-spacing="1.6" fill="#9aa5c4">DOICHAIN SEAL</text>'
+        f'<text x="68" y="38" font-size="15" font-weight="bold" fill="#e8ecf8">{t}</text>'
+        f'<text x="68" y="54" font-size="10.5" fill="{accent}">{l}</text>'
+        f'<text x="{width - 44}" y="54" font-size="10.5" fill="#9aa5c4" text-anchor="end">{d}</text>'
+        "</g>"
+        f"{mark}"
+        "</svg>"
+    )
+
+
+def seal_for_status(status: dict | None, tag: str | None = None) -> tuple[str, str, str, str, int]:
+    """Titel, Statuszeile, Detail, Farbe und Cache-Dauer fuer das Siegel-Abzeichen."""
+    if not status or status.get("status") == "unknown":
+        return (tag or "not sealed", "no seal on chain" if tag else "no seal found", "doi-api.sendlabs.de/seal", "grey", 300)
+    first = status.get("first_anchored") or {}
+    height = first.get("height") or status.get("height")
+    when = (first.get("block_time_iso") or status.get("block_time_iso") or "")[:10]
+    hash_hex = status.get("hash") or ""
+    title = tag or (hash_hex[:12] + "…" if hash_hex else "sealed file")
+    if status.get("status") == "pending":
+        return (title, "pending · next block", "anchoring", "yellow", 60)
+    detail = when or "anchored"
+    if status.get("status") == "expired":
+        return (title, f"block {height} · name expired", detail, "green", 3600)
+    return (title, f"sealed in block {height}", detail, "green", 3600)
+
+
 def badge_for_status(status: dict | None, tag: str | None = None) -> tuple[str, str, int]:
     """Text, Farbe und Cache-Dauer (Sekunden) des Abzeichens aus einem PoE-Status."""
     if not status or status.get("status") == "unknown":
@@ -343,7 +403,11 @@ def page_hash(hash_hex: str, status: dict, rows: list[dict]) -> str:
             f'Seal a release with the <a href="{ACTION_URL}">Doichain Seal GitHub Action</a> or any file with <a href="https://verifile.it/">Verifile</a>.</p>'
         )
     body += "</div>"
-    body += f'<p><img class="badge" src="/seal/{_e(hash_hex)}/badge.svg" alt="Doichain seal badge"> <span class="small muted">Badge for this file: <code>{settings.public_url}/seal/{_e(hash_hex)}/badge.svg</code></span></p>'
+    body += (
+        f'<h2>Badges for this file</h2><div class="card"><p><img class="badge" src="/seal/{_e(hash_hex)}/seal.svg" alt="Doichain seal"></p>'
+        f'<pre>[![Doichain Seal]({settings.public_url}/seal/{_e(hash_hex)}/seal.svg)]({settings.public_url}/seal/{_e(hash_hex)})</pre>'
+        f'<p><img class="badge" src="/seal/{_e(hash_hex)}/badge.svg" alt="Doichain seal badge"> <span class="small muted">compact: <code>{settings.public_url}/seal/{_e(hash_hex)}/badge.svg</code></span></p></div>'
+    )
     body += _verify_block(hash_hex, _value_of(status).get("file"))
     return _layout(title=title, description=description, canonical=canonical, body=body)
 
@@ -373,8 +437,10 @@ def page_repo(owner: str, name: str, rows: list[dict], statuses: dict[str, dict]
             f'Add the <a href="{ACTION_URL}">Doichain Seal GitHub Action</a> to its release workflow.</p></div>'
         )
     body += (
-        f'<p><img class="badge" src="/seal/github/{_e(owner)}/{_e(name)}/badge.svg" alt="Doichain seal badge"> '
-        f'<span class="small muted">README badge:</span></p><pre>[![Doichain Seal]({settings.public_url}/seal/github/{_e(owner)}/{_e(name)}/badge.svg)]({_e(canonical)})</pre>'
+        f'<h2>Badges for the README</h2><div class="card"><p><img class="badge" src="/seal/github/{_e(owner)}/{_e(name)}/seal.svg" alt="Doichain seal"></p>'
+        f'<pre>[![Doichain Seal]({settings.public_url}/seal/github/{_e(owner)}/{_e(name)}/seal.svg)]({_e(canonical)})</pre>'
+        f'<p><img class="badge" src="/seal/github/{_e(owner)}/{_e(name)}/badge.svg" alt="Doichain seal badge"> <span class="small muted">compact variant:</span></p>'
+        f'<pre>[![Doichain Seal]({settings.public_url}/seal/github/{_e(owner)}/{_e(name)}/badge.svg)]({_e(canonical)})</pre></div>'
     )
     if rows:
         body += '<h2>All sealed files</h2><div class="card"><table><thead><tr><th>Release</th><th>File</th><th>Sealed</th><th>Status</th></tr></thead><tbody>'
@@ -412,8 +478,9 @@ def page_index(stat: dict) -> str:
         '<h2 id="how">Add it to a release workflow</h2>'
         "<pre>permissions:\n  contents: read\n  id-token: write   # lets the job prove its identity to the seal service\n\nsteps:\n  - uses: actions/checkout@v4\n  - run: ./build.sh            # produces dist/*\n"
         "  - uses: neubuot/doichain-seal@v1\n    with:\n      files: dist/*</pre>"
-        "<p>Then put the badge into your README:</p>"
-        f"<pre>[![Doichain Seal]({base}/seal/github/OWNER/REPO/badge.svg)]({base}/seal/github/OWNER/REPO)</pre>"
+        "<p>Then put the seal into your README (the large seal, or the compact badge with <code>badge.svg</code>):</p>"
+        '<p><img class="badge" src="/seal/github/neubuot/doichain-seal/seal.svg" alt="Doichain seal"> <img class="badge" src="/seal/github/neubuot/doichain-seal/badge.svg" alt="Doichain seal badge"></p>'
+        f"<pre>[![Doichain Seal]({base}/seal/github/OWNER/REPO/seal.svg)]({base}/seal/github/OWNER/REPO)</pre>"
         '<h2>What the seal proves</h2><div class="card"><ul>'
         "<li><strong>Existence and time:</strong> a file with exactly this SHA-256 existed no later than the block time.</li>"
         "<li><strong>Origin:</strong> the name value carries repository, ref and commit from the verified GitHub OIDC token and is written by the DOI Labs wallet.</li>"

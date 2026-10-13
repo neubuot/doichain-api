@@ -343,3 +343,23 @@ def test_pending_page_shows_origin_from_index(node, client):
     assert "Pending" in page
     assert f"https://github.com/{REPO}/releases/tag/v1.2.3" in page
     assert "appears with the next block" in page
+
+
+def test_large_seal_svg_for_repo_and_hash(node, client):
+    client.post("/v1/seal/github", json={"hash": HASH}, headers=auth(make_token()))
+    node.tip = 7000 + 100  # Name noch aktiv
+    node.add_history("poe/" + HASH, [(1, 7000, "N1first", "x")])
+    repo = client.get(f"/seal/github/{REPO}/seal.svg")
+    assert repo.status_code == 200 and repo.headers["content-type"].startswith("image/svg+xml")
+    assert "v1.2.3" in repo.text and "sealed in block 7000" in repo.text and "DOICHAIN SEAL" in repo.text
+    by_hash = client.get(f"/seal/{HASH}/seal.svg")
+    assert "sealed in block 7000" in by_hash.text
+    empty = client.get("/seal/github/nobody/nothing/seal.svg")
+    assert "no seals yet" in empty.text
+    unknown = client.get("/seal/" + "9" * 64 + "/seal.svg")
+    assert "no seal found" in unknown.text and "max-age=300" in unknown.headers["cache-control"]
+
+
+def test_large_seal_escapes_xml():
+    svg = seals.seal_svg("v<1>", 'a"&b', "d", "green")
+    assert "v&lt;1&gt;" in svg and "a&quot;&amp;b" in svg

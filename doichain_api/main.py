@@ -1501,6 +1501,19 @@ async def seal_repo_badge(owner: str, name: str):
     return svg_response(seals.badge_svg("Doichain seal", text, color), max_age)
 
 
+@app.get("/seal/github/{owner}/{name}/seal.svg", tags=["Seal"], summary="Siegel-Abzeichen eines Repositories (gross, SVG)", response_class=Response)
+async def seal_repo_seal(owner: str, name: str):
+    check_github_name(owner, name)
+    rows = seals.for_repo(f"{owner}/{name}", 1)
+    status_ = None
+    if rows:
+        status_ = (await seal_statuses([rows[0]["hash"]])).get(rows[0]["hash"])
+    title, line, detail, color, max_age = seals.seal_for_status(status_, rows[0]["tag"] if rows else None)
+    if not rows:
+        title, line, detail = f"{owner}/{name}"[:28], "no seals yet", "doi-api.sendlabs.de/seal"
+    return svg_response(seals.seal_svg(title, line, detail, color), max_age)
+
+
 @app.get("/seal/github/{owner}/{name}", tags=["Seal"], summary="Pruefseite eines Repositories (HTML)", response_class=HTMLResponse)
 async def seal_repo_page(owner: str, name: str):
     check_github_name(owner, name)
@@ -1517,6 +1530,16 @@ async def seal_hash_badge(hash: str):
     status_ = await poe_status(hash_hex)
     text, color, max_age = seals.badge_for_status(status_)
     return svg_response(seals.badge_svg("Doichain seal", text, color), max_age)
+
+
+@app.get("/seal/{hash}/seal.svg", tags=["Seal"], summary="Siegel-Abzeichen eines Hashes (gross, SVG)", response_class=Response)
+async def seal_hash_seal(hash: str):
+    hash_hex = check_hash(hash)
+    status_ = await poe_status(hash_hex)
+    gh = seals.origin_of(status_)
+    tag = gh.get("ref") if gh and isinstance(gh.get("ref"), str) else None
+    title, line, detail, color, max_age = seals.seal_for_status(status_, tag)
+    return svg_response(seals.seal_svg(title, line, detail, color), max_age)
 
 
 @app.get("/seal/{hash}", tags=["Seal"], summary="Pruefseite eines Hashes (HTML)", response_class=HTMLResponse)
