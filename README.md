@@ -1,5 +1,7 @@
 # Doichain API
 
+[![Doichain Seal](https://doi-api.sendlabs.de/seal/github/neubuot/doichain-api/seal.svg)](https://doi-api.sendlabs.de/seal/github/neubuot/doichain-api)
+
 REST-Schnittstelle vor einer Doichain-Node (Doichain Core v31.1.6). Stellt alle Doichain-Funktionen
 über HTTP bereit: **Proof of Existence**, **`name_doi`** und die übrigen Namensoperationen, Blöcke,
 Transaktionen, Mempool, Adressguthaben (über ElectrumX) und das Wallet der Node. Interaktive
