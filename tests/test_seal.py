@@ -334,3 +334,12 @@ def test_openapi_lists_seal_tag(client):
     schema = client.get("/openapi.json").json()
     assert "/v1/seal/github" in schema["paths"]
     assert any(t["name"] == "Seal" for t in schema["tags"])
+
+
+def test_pending_page_shows_origin_from_index(node, client):
+    client.post("/v1/seal/github", json={"hash": HASH, "filename": "a.zip"}, headers=auth(make_token()))
+    node.pending["poe/" + HASH] = [{"txid": NEW_TXID, "op": "name_doi", "address": "N1", "value": "{}"}]
+    page = client.get("/seal/" + HASH).text
+    assert "Pending" in page
+    assert f"https://github.com/{REPO}/releases/tag/v1.2.3" in page
+    assert "appears with the next block" in page

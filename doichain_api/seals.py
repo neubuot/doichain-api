@@ -283,6 +283,9 @@ def _details(status: dict, row: dict | None) -> str:
     value = _value_of(status)
     parts = ["<dl>"]
     parts.append(f'<dt>SHA-256</dt><dd><code>{_e(status.get("hash"))}</code></dd>')
+    if not gh and row and status.get("status") == "pending":
+        # Noch nicht im Block: Herkunft vorlaeufig aus dem Index zeigen, die Kette bestaetigt sie mit dem naechsten Block.
+        gh = {"repo": row.get("repo"), "ref": row.get("tag"), "sha": (row.get("sha") or "")[:12], "_index": True}
     if gh:
         repo = gh.get("repo", "")
         parts.append(f'<dt>Repository</dt><dd><a href="https://github.com/{_e(repo)}">{_e(repo)}</a></dd>')
@@ -299,7 +302,9 @@ def _details(status: dict, row: dict | None) -> str:
     if txid:
         parts.append(f'<dt>Transaction</dt><dd><a href="{_e(first.get("explorer_tx") or status.get("explorer_tx"))}"><code>{_e(txid)}</code></a></dd>')
     parts.append(f'<dt>Name on chain</dt><dd><code>{_e(status.get("name"))}</code></dd>')
-    if status.get("owned_by_this_wallet") and gh:
+    if gh and gh.get("_index"):
+        parts.append('<dt>Origin</dt><dd class="muted">Recorded by the seal service from a verified GitHub Actions OIDC token. The chain entry appears with the next block.</dd>')
+    elif status.get("owned_by_this_wallet") and gh:
         parts.append("<dt>Origin</dt><dd>Written by the DOI Labs API after verifying a GitHub Actions OIDC token for this repository and commit.</dd>")
     elif gh:
         parts.append('<dt>Origin</dt><dd class="muted">The name carries GitHub data, but it was not written by this API. Treat the repository claim as unverified.</dd>')
