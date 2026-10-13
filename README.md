@@ -238,6 +238,20 @@ es sei denn, der Aufruf setzt ausdrücklich `"reanchor": true` (Formularfeld `re
 Dann entsteht eine neue, spätere Registrierung, die Antwort enthält `reanchored_after_expiry: true` (und
 `renewed` mit demselben Wert für ältere Clients), der ursprüngliche Nachweis bleibt unverändert.
 
+## Doichain Seal: Siegel für Software-Releases
+
+Seit 1.7.0 (13.10.2026) versiegelt die GitHub Action [neubuot/doichain-seal](https://github.com/neubuot/doichain-seal)
+Release-Dateien. Der Workflow weist sich mit seinem GitHub-OIDC-Token aus (`permissions: id-token: write`),
+ein API-Schlüssel ist nicht nötig. `POST /v1/seal/github` prüft das Token (JWKS von GitHub, Aussteller,
+Zielgruppe `doichain-seal`, Ablauf) und verankert `poe/<hash>` mit dem Zusatzfeld `gh` (Repository, Ref, Commit)
+im Wert. Kontingent 20 Siegel je Repository und Tag, 300 je Tag insgesamt (`DOI_SEAL_PER_REPO_DAY`,
+`DOI_SEAL_PER_DAY`), eigener Bereich `gh` in `quota.db`, Index `seals.db` im StateDirectory.
+
+Lesen: `GET /v1/seal/github/{owner}/{repo}`, `GET /v1/seal/{hash}`, `GET /v1/seal/stats`. Abzeichen für READMEs:
+`GET /seal/github/{owner}/{repo}/badge.svg` und `GET /seal/{hash}/badge.svg`. Prüfseiten mit Open-Graph-Karte:
+`/seal`, `/seal/github/{owner}/{repo}`, `/seal/{hash}` (englisch). Module `doichain_api/github_oidc.py` und
+`doichain_api/seals.py`, Tests in `tests/test_seal.py`.
+
 ## MCP-Server für KI-Agenten
 
 Der MCP-Server (`doichain_mcp/server.py`, MCP-SDK 2.x) macht die öffentlichen Funktionen der API als Werkzeuge
@@ -310,6 +324,9 @@ doichain_api/
   auth.py        Schlüsselstufen als OpenAPI-Sicherheitsschema
   config.py      Einstellungen aus Umgebungsvariablen, Startprüfung der Schlüssel
   quota.py       Tageskontingent des poe-Schluessels (SQLite)
+  github_oidc.py Pruefung der GitHub-Actions-OIDC-Tokens (Doichain Seal)
+  seals.py       Siegel-Index, SVG-Abzeichen und HTML-Pruefseiten (Doichain Seal)
+  assets/        Open-Graph-Bild der Seal-Seiten
 doichain_mcp/
   server.py      MCP-Server (13 Werkzeuge, Streamable HTTP, zustandslos), ruft nur die REST-API auf
 web/
