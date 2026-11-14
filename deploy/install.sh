@@ -68,6 +68,14 @@ if ! grep -q "^DOI_API_KEYS_POE=" "$ENV_FILE"; then
   echo "poe-Schluessel in $ENV_FILE ergaenzt."
 fi
 
+# Verbraucherdatei des Verbrauchsbuchs (Fingerprints und Notizmuster, keine Schluessel) nur anlegen, wenn sie
+# fehlt. Die Zuordnung ist Sache des Betreibers und wird nie ueberschrieben.
+CONSUMERS=/etc/doichain-api/consumers.json
+if [ ! -f "$CONSUMERS" ]; then
+  install -o root -g doiapi -m 0640 "$SRC/deploy/consumers.example.json" "$CONSUMERS"
+  echo "Verbraucherdatei $CONSUMERS als Beispiel angelegt, bitte die eigenen Fingerprints eintragen (GET /v1/poe/quota nennt key_id)."
+fi
+
 # Web-Oberflaechen: Landingpage der API und Verifile-App (config.js mit dem poe-Schluessel wird erzeugt).
 install -d -m 0755 /var/www/doichain-api-site /var/www/verifile
 rsync -a --delete "$SRC/web/api-site/" /var/www/doichain-api-site/

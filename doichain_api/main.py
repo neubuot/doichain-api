@@ -19,16 +19,17 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Path, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Path, Query, Request, Security, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import quota, seals
-from .auth import LEVELS, auth_level_of, require
+from . import ledger, quota, seals
+from .auth import LEVELS, api_key_header, auth_level_of, bearer_scheme, key_level, require
 from .config import settings
 from .electrum import AddressError, ElectrumError, electrum_call, scripthash_for_address
 from .github_oidc import GithubIdentity, OidcError, verify_github_token
@@ -1105,18 +1106,19 @@ async def name_history_query(
 
 
 @app.post("/v1/name/doi", tags=["Namen"], summary="Namen per name_doi registrieren, aktualisieren oder verlaengern (write)", description="Ein freier oder abgelaufener Name wird registriert, ein eigener aktiver Name aktualisiert (das verlaengert den Ablauf um 36.000 Bloecke). Je Name ist nur eine unbestaetigte Operation erlaubt.", dependencies=[Depends(require("write"))])
-async def name_doi(body: NameDoi):
+async def name_doi(body: NameDoi, request: Request):
     name = check_name(body.name)
     value = check_value(body.value, body.value_encoding)
     options = name_options(destAddress=blank_to_none(body.dest_address), nameEncoding=check_encoding(body.name_encoding), valueEncoding=check_encoding(body.value_encoding))
     txid = await rpc.call("name_doi", name, value, options, wallet=True)
     result = await ensure_accepted(txid)
+    book(request, txid, "name", name, value)
     result["name"] = name
     return result
 
 
 @app.post("/v1/name/update", tags=["Namen"], summary="Namen aendern oder uebertragen (name_update, write)", dependencies=[Depends(require("write"))])
-async def name_update(body: NameUpdate):
+async def name_update(body: NameUpdate, request: Request):
     name = check_name(body.name)
     options = name_options(destAddress=blank_to_none(body.dest_address), valueEncoding=check_encoding(body.value_encoding))
     value = check_value(body.value, body.value_encoding) if body.value else None
@@ -1124,33 +1126,37 @@ async def name_update(body: NameUpdate):
         raise HTTPException(422, "Entweder value oder dest_address angeben, sonst gibt es nichts zu aendern")
     txid = await rpc.call("name_update", name, value, options, wallet=True)
     result = await ensure_accepted(txid)
+    book(request, txid, "name", name, value)
     result["name"] = name
     return result
 
 
 @app.post("/v1/name/new", tags=["Namen"], summary="Schritt 1 der klassischen Registrierung (name_new, write)", dependencies=[Depends(require("write"))])
-async def name_new(body: NameNew):
+async def name_new(body: NameNew, request: Request):
     name = check_name(body.name)
     result = await rpc.call("name_new", name, name_options(with_value=False, destAddress=body.dest_address), wallet=True)
     accepted = await ensure_accepted(result[0])
+    book(request, result[0], "name", name, None)
     return {"name": name, "txid": result[0], "rand": result[1], "status": accepted["status"], "explorer": accepted["explorer"], "hint": "Nach 12 Bestaetigungen mit POST /v1/name/firstupdate abschliessen"}
 
 
 @app.post("/v1/name/firstupdate", tags=["Namen"], summary="Schritt 2 der klassischen Registrierung (name_firstupdate, write)", dependencies=[Depends(require("write"))])
-async def name_firstupdate(body: NameFirstUpdate):
+async def name_firstupdate(body: NameFirstUpdate, request: Request):
     name = check_name(body.name)
     value = check_value(body.value, body.value_encoding)
     txid = await rpc.call("name_firstupdate", name, body.rand, body.txid, value, name_options(valueEncoding=check_encoding(body.value_encoding)), wallet=True)
     result = await ensure_accepted(txid)
+    book(request, txid, "name", name, value)
     result["name"] = name
     return result
 
 
 @app.post("/v1/name/sendtoname", tags=["Namen"], summary="DOI an den Inhaber eines Namens senden (admin)", dependencies=[Depends(require("admin"))])
-async def send_to_name(body: SendToName):
+async def send_to_name(body: SendToName, request: Request):
     name = check_name(body.name)
     txid = await rpc.call("sendtoname", name, str(body.amount), body.comment or "", wallet=True)
     result = await ensure_accepted(txid)
+    book(request, txid, "send", name, body.comment)
     result["name"] = name
     return result
 
@@ -1158,6 +1164,13 @@ async def send_to_name(body: SendToName):
 # ---------------------------------------------------------------------------
 # Proof of Existence
 # ---------------------------------------------------------------------------
+
+def book(request: Request, txid: str, route: str, name: str | None, value: str | None) -> None:
+    """Schreibaufruf mit Schluessel ins Verbrauchsbuch eintragen. Die Notiz kommt aus dem Wert, wenn er
+    das PoE-Format hat, sonst bleibt sie leer (Werte anderer Namen gehoeren nicht ins Verbrauchsbuch)."""
+    note, _ = ledger.note_of_value(value) if route == "name" else (value, None)
+    ledger.record(txid, route=route, key_id=getattr(request.state, "api_key_id", None), name=name, note=note)
+
 
 def client_ip(request: Request) -> str:
     """Client-Adresse fuer das Kontingent. IPv6 wird auf das /64-Praefix zusammengefasst, weil ein Anschluss
@@ -1324,6 +1337,11 @@ async def _poe_create(
             quota.release(ident)
             remaining = quota.usage(ident, **quota_limits)
         raise
+    seal = bool(ident_override and ident_override.startswith(quota.GH_PREFIX))
+    ledger.record(
+        txid, route="seal" if seal else "public" if nokey else "poe", key_id=None if (seal or nokey) else key_id,
+        ident=ident_override if seal else None, name=name, note=(note or filename or "").strip() or None,
+    )
     result.update(
         {
             "hash": hash_hex,
@@ -1606,6 +1624,91 @@ async def wallet_funding_address():
     return {"address": address, "hint": "Jeder Name bindet 0,01 DOI (kein Pfand, mit dem Ablauf des Namens verloren), jede Namensoperation kostet rund 0,0002 bis 0,0005 DOI Gebuehr", "explorer": explorer_link("address", address)}
 
 
+def report_allowed(request: Request, api_key: str | None, bearer: Any) -> bool:
+    """Auskunft nur mit admin-Schluessel oder von einer freigegebenen Adresse (DOI_REPORT_ALLOW_IPS)."""
+    key = (api_key or "").strip(" \t") or (bearer.credentials.strip(" \t") if bearer and bearer.credentials else "")
+    if key and key_level(key) >= LEVELS["admin"]:
+        return True
+    host = request.client.host if request.client else ""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    for item in settings.report_allow:
+        net = ipaddress.ip_network(item, strict=False)
+        if addr.version == net.version and addr in net:
+            return True
+    return False
+
+
+_report_lock = asyncio.Lock()
+_report_cache: dict[str, Any] = {"time": 0.0, "data": None}
+REPORT_CACHE_SECONDS = 60
+
+
+async def ledger_sync() -> None:
+    """Wallet-Transaktionen seit dem letzten Abgleich ins Verbrauchsbuch uebernehmen. Beim ersten Lauf die
+    ganze Historie, dazu einmalig die Werte aller Namen des Wallets, damit aeltere Nachweise ueber ihre Notiz
+    einem Verbraucher zugeordnet werden koennen."""
+    last_block = await asyncio.to_thread(ledger.meta, "last_block")
+    values: dict[str, Any] = {}
+    since = None
+    if last_block:
+        try:
+            since = await rpc.call("listsinceblock", last_block, 6, wallet=True)
+        except RPCError:
+            # Block nach einer Reorganisation unbekannt: ganze Historie erneut lesen (Eintraege sind idempotent).
+            since = None
+    if since is None:
+        since = await rpc.call("listsinceblock", "", 6, wallet=True)
+        names = await rpc.call("name_list", None, name_options(), wallet=True)
+        values = {n["txid"]: n.get("value") for n in names if n.get("txid")}
+    await asyncio.to_thread(ledger.sync, since.get("transactions") or [], values, last_block=since.get("lastblock"))
+
+
+@app.get(
+    "/v1/wallet/report", tags=["Wallet"],
+    summary="Betriebsauskunft: Guthaben, Reichweite, Verbrauch je Verbraucher, Einzahlungsadresse (admin oder freigegebene Adresse)",
+    description=(
+        "Fuer das Dashboard des Betreibers. Liefert Guthaben und Reserve, den Verbrauch der letzten 24 Stunden, 7 und 30 Tage "
+        "je Verbraucher (Schluessel-Fingerprint oder Notizmuster, Zuordnung in DOI_CONSUMERS_FILE), die Reichweite bis zur "
+        "Pause der oeffentlichen Nachweise und bis das Wallet leer ist, die letzten Einzahlungen und die Einzahlungsadresse. "
+        "Zugriff mit admin-Schluessel oder von einer Adresse aus DOI_REPORT_ALLOW_IPS. Die Antwort wird 60 Sekunden zwischengespeichert."
+    ),
+)
+async def wallet_report(
+    request: Request,
+    api_key: str | None = Security(api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+):
+    if not report_allowed(request, api_key, bearer):
+        raise HTTPException(403, "Die Betriebsauskunft braucht einen admin-Schluessel oder eine freigegebene Adresse (DOI_REPORT_ALLOW_IPS)")
+    async with _report_lock:
+        if _report_cache["data"] is not None and time.time() - _report_cache["time"] < REPORT_CACHE_SECONDS:
+            return _report_cache["data"]
+        await ledger_sync()
+        balances = (await rpc.call("getbalances", wallet=True))["mine"]
+        data = await asyncio.to_thread(
+            ledger.report, balance=float(balances["trusted"]), pending=float(balances["untrusted_pending"]), reserve=PUBLIC_POE_RESERVE,
+        )
+        address = None
+        try:
+            addresses = await rpc.call("getaddressesbylabel", "api-funding", wallet=True)
+            address = sorted(addresses.keys())[0] if addresses else None
+        except RPCError:
+            pass
+        data["wallet"]["name"] = settings.rpc_wallet
+        data["funding"] = {
+            "address": address, "label": "api-funding", "explorer": explorer_link("address", address) if address else None,
+            "hint": "Jeder Name bindet 0,01 DOI, dazu kommt die Gebuehr der Transaktion. Einzahlungen zaehlen nach der ersten Bestaetigung",
+        }
+        data["api_version"] = settings.api_version
+        _report_cache.update(time=time.time(), data=data)
+        return data
+
+
 @app.get("/v1/wallet/names", tags=["Wallet"], summary="Namen, die das Wallet haelt (name_list, write)", dependencies=[Depends(require("write"))])
 async def wallet_names():
     names = await rpc.call("name_list", None, name_options(), wallet=True)
@@ -1637,7 +1740,7 @@ async def wallet_abandon(body: TxId):
 
 
 @app.post("/v1/wallet/send", tags=["Wallet"], summary="DOI an eine Adresse senden (admin)", dependencies=[Depends(require("admin"))])
-async def wallet_send(body: WalletSend):
+async def wallet_send(body: WalletSend, request: Request):
     await validated_address(body.address)
     params = {
         "address": body.address,
@@ -1648,6 +1751,7 @@ async def wallet_send(body: WalletSend):
     }
     txid = await rpc.call("sendtoaddress", named=params, wallet=True)
     result = await ensure_accepted(txid)
+    book(request, txid, "send", body.address, body.comment)
     result["address"] = body.address
     result["amount"] = str(body.amount)
     return result

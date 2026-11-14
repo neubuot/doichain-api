@@ -57,6 +57,11 @@ class Settings:
     poe_key_limits: dict[str, int] = field(default_factory=lambda: _key_limits(os.environ.get("DOI_POE_KEY_LIMITS", "")))
     poe_keyed_per_day: int = int(os.environ.get("DOI_POE_KEYED_PER_DAY", "1000"))
     state_dir: str = os.environ.get("DOI_STATE_DIR", "/var/lib/doichain-api")
+    # Verbrauchsbuch (ledger.db im state_dir): Zuordnung von Schluessel-Fingerprints und Notizmustern zu
+    # Verbrauchernamen. Die Datei enthaelt keine Schluessel.
+    consumers_file: str = os.environ.get("DOI_CONSUMERS_FILE", "/etc/doichain-api/consumers.json")
+    # Adressen oder Netze, die GET /v1/wallet/report ohne Schluessel lesen duerfen (Dashboard des Betreibers).
+    report_allow: tuple[str, ...] = field(default_factory=lambda: _csv(os.environ.get("DOI_REPORT_ALLOW_IPS", "")))
     # Siegel fuer Software-Releases (GitHub Action "Doichain Seal"): Der Runner weist sich mit einem
     # OIDC-Token von GitHub aus, Kontingent je Repository und Tag plus gemeinsame Tagesgrenze.
     seal_audience: str = os.environ.get("DOI_SEAL_AUDIENCE", "doichain-seal")
@@ -73,7 +78,7 @@ class Settings:
     # Namecoin-Grenzen, die Doichain Core 31 erbt.
     max_name_length: int = 255
     max_value_length: int = 520
-    api_version: str = "1.7.1"
+    api_version: str = "1.8.0"
 
 
 settings = Settings()
@@ -90,4 +95,16 @@ def _check_keys() -> None:
                 raise RuntimeError(f"{name}: Schluessel ist kuerzer als 16 Zeichen, bitte mit 'openssl rand -hex 24' erzeugen")
 
 
+def _check_report_allow() -> None:
+    """Tippfehler in DOI_REPORT_ALLOW_IPS beim Start melden statt die Auskunft still zu sperren."""
+    import ipaddress
+
+    for item in settings.report_allow:
+        try:
+            ipaddress.ip_network(item, strict=False)
+        except ValueError as exc:
+            raise RuntimeError(f"DOI_REPORT_ALLOW_IPS: '{item}' ist keine Adresse und kein Netz") from exc
+
+
 _check_keys()
+_check_report_allow()

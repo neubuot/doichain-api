@@ -1,0 +1,10 @@
+{
+  "keys": {
+    "0123456789abcdef": {"name": "Beispiel-Anwendung"},
+    "fedcba9876543210": {"name": "Öffentlicher Schlüssel (Web-App, MCP)", "shared": true}
+  },
+  "patterns": [
+    {"match": "^beispiel:", "name": "Beispiel-Anwendung"},
+    {"match": "^Screenshot ", "name": "Screenshot PoE"}
+  ]
+}

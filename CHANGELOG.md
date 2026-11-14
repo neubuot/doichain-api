@@ -2,6 +2,15 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.8.0 (2026-11-14)
+
+Verbrauchsbuch und Betriebsauskunft. Anlass: Am 14.11.2026 lag das Wallet unbemerkt unter der Reserve von 5 DOI, die Nachweise mit poe-Schlüssel pausierten. Niemand wusste, wer das Guthaben verbraucht.
+
+- Neues Verbrauchsbuch `ledger.db` im StateDirectory. Jede schreibende Route (Nachweise, Siegel, Namensoperationen, Auszahlungen) trägt ihre Transaktion mit dem Fingerprint des Schlüssels, der Route und der Notiz ein. Kosten und Zeit kommen aus dem Wallet (`listsinceblock`), ebenso Transaktionen, die nicht über die API liefen, und die Einzahlungen. Verworfene und verdrängte Transaktionen verschwinden wieder. Der erste Abgleich liest die ganze Historie und ordnet ältere Nachweise über die Notiz im Wert des Namens zu.
+- Neue Verbraucherdatei `consumers.json` (`DOI_CONSUMERS_FILE`): Fingerprints und Notizmuster mit Namen, ohne Schlüssel. `shared` kennzeichnet Schlüssel, die sich mehrere Anwendungen teilen, dort entscheidet zuerst das Notizmuster. Der Installer legt die Datei nur an, wenn sie fehlt.
+- Neuer Endpunkt `GET /v1/wallet/report`: Guthaben, Reserve, Verbrauch der letzten 24 Stunden, 7 und 30 Tage je Verbraucher, Tagesreihe über 30 Tage, Reichweite bis zur Pause der öffentlichen Nachweise und bis das Wallet leer ist, letzte Einzahlungen, letzte Transaktionen und die Einzahlungsadresse. Zugriff mit admin-Schlüssel oder von einer Adresse aus `DOI_REPORT_ALLOW_IPS`. Antwort 60 Sekunden zwischengespeichert.
+- Tests: `tests/test_ledger.py` (9 Tests) für Kosten, Zuordnung, Zeitfenster, Reichweite, Zugriffsschutz und den Abgleich ab dem letzten Block.
+
 ## 1.7.0 (2026-10-13)
 
 Doichain Seal: Siegel für Software-Releases über eine GitHub Action, Abzeichen und Prüfseite.
