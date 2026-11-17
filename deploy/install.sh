@@ -116,6 +116,22 @@ install -d -o root -g doimcp -m 0750 /etc/doichain-mcp
     "DOI_MCP_POE_KEY=$POE_KEY" \
     "DOI_MCP_ALLOWED_HOSTS=doi-api.sendlabs.de,api.doi.zone,127.0.0.1:*,localhost:*"     "# Authorization: Bearer als API-Schluessel werten (Standard im Code aus, hier bewusst an)."     "DOI_MCP_ACCEPT_BEARER=true" > "$MCP_ENV" )
 chown root:doimcp "$MCP_ENV"; chmod 0640 "$MCP_ENV"
+# Verifile MCP-Server: derselbe Code und dieselbe venv als zweiter Dienst auf 127.0.0.1:8083, mit dem Profil
+# verifile (nur die vier Nachweis-Werkzeuge), erreichbar unter https://verifile.it/mcp.
+VMCP_ENV=/etc/doichain-mcp/verifile-mcp.env
+( umask 027
+  printf "%s\n" \
+    "# Verifile MCP-Server. Wird von deploy/install.sh erzeugt, Aenderungen dort vornehmen." \
+    "# Enthaelt nur den oeffentlichen poe-Schluessel (steht ohnehin in der Verifile-App)." \
+    "DOI_MCP_PROFILE=verifile" \
+    "DOI_MCP_API_URL=http://127.0.0.1:8080" \
+    "DOI_MCP_PUBLIC_URL=$API_BASE" \
+    "DOI_MCP_VERIFILE_URL=https://verifile.it" \
+    "DOI_MCP_POE_KEY=$POE_KEY" \
+    "DOI_MCP_ALLOWED_HOSTS=verifile.it,127.0.0.1:*,localhost:*" \
+    "DOI_MCP_ACCEPT_BEARER=true" > "$VMCP_ENV" )
+chown root:doimcp "$VMCP_ENV"; chmod 0640 "$VMCP_ENV"
+install -m 0644 "$SRC/deploy/verifile-mcp.service" /etc/systemd/system/verifile-mcp.service
 install -d -m 0755 /var/www/doichain-mcp-site
 rsync -a --delete "$SRC/web/mcp-site/" /var/www/doichain-mcp-site/
 chown -R root:root /var/www/doichain-mcp-site
@@ -146,9 +162,13 @@ systemctl enable doichain-api.service >/dev/null 2>&1 || true
 systemctl restart doichain-api.service
 systemctl enable doichain-mcp.service >/dev/null 2>&1 || true
 systemctl restart doichain-mcp.service
+systemctl enable verifile-mcp.service >/dev/null 2>&1 || true
+systemctl restart verifile-mcp.service
 systemctl reload nginx
 sleep 3
 systemctl --no-pager --lines=0 status doichain-api.service | head -5
 curl -s -m 15 http://127.0.0.1:8080/health; echo
 systemctl --no-pager --lines=0 status doichain-mcp.service | head -3
 curl -s -m 20 http://127.0.0.1:8081/health; echo
+systemctl --no-pager --lines=0 status verifile-mcp.service | head -3
+curl -s -m 20 http://127.0.0.1:8083/health; echo

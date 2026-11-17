@@ -6,6 +6,7 @@ Proof of Existence (PoE) und Wallet-Funktionen. Interaktive Doku unter /docs.
 """
 
 import asyncio
+import copy
 import hashlib
 import ipaddress
 import os
@@ -1874,3 +1875,95 @@ def openapi_with_public_read() -> dict[str, Any]:
 
 
 app.openapi = openapi_with_public_read  # type: ignore[method-assign]
+
+
+# ---------------------------------------------------------------------------
+# Verifile API: der Nachweis-Ausschnitt dieser API unter https://verifile.it/api
+# ---------------------------------------------------------------------------
+
+# Aufrufe, die nginx unter https://verifile.it/api durchreicht (deploy/nginx-verifile.conf, dort als Muster
+# der erlaubten Pfade). Bewusst ohne die beiden Datei-Uploads: Bei Verifile verlaesst die Datei nie den Rechner.
+VERIFILE_API_OPERATIONS: tuple[tuple[str, str], ...] = (
+    ("/v1/poe/{hash}", "get"),
+    ("/v1/poe/verify", "post"),
+    ("/v1/poe/public", "post"),
+    ("/v1/poe/public/quota", "get"),
+    ("/v1/poe", "post"),
+    ("/v1/poe/quota", "get"),
+    ("/v1/status", "get"),
+)
+
+VERIFILE_API_DESCRIPTION = """
+Proof of Existence fuer Dateien und Texte: den SHA-256 eines Dokuments in der Doichain verankern und spaeter
+pruefen. Die Datei selbst bleibt immer beim Aufrufer, an die API geht nur der Hash.
+
+Dies ist der Nachweis-Ausschnitt der Doichain API. Pruefen (`GET /v1/poe/{hash}`) und das oeffentliche Verankern
+(`POST /v1/poe/public`, Tageskontingent je IP-Adresse) brauchen keinen Schluessel. `POST /v1/poe` und
+`GET /v1/poe/quota` erwarten einen poe- oder write-Schluessel im Header `X-API-Key`.
+
+Notiz und Dateiname eines Nachweises sind dauerhaft oeffentlich, also keine personenbezogenen Daten hineinschreiben.
+Ein Nachweis ist mit der ersten Bestaetigung endgueltig (naechster Block, im Mittel zehn Minuten).
+
+Anleitung mit Beispielen: https://verifile.it/developers/ Dieselben Funktionen fuer KI-Agenten (MCP):
+https://verifile.it/mcp
+
+**Fehlerformat:** `{"error": {"type": "...", "code": n, "message": "..."}}`
+"""
+
+_verifile_openapi_schema: dict[str, Any] | None = None
+
+
+def _schema_refs(node: Any, found: set[str]) -> None:
+    """Sammelt die Namen aller Schemas, auf die ein Ausschnitt der OpenAPI-Beschreibung verweist."""
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            found.add(ref.rsplit("/", 1)[1])
+        for value in node.values():
+            _schema_refs(value, found)
+    elif isinstance(node, list):
+        for value in node:
+            _schema_refs(value, found)
+
+
+def verifile_openapi() -> dict[str, Any]:
+    """OpenAPI-Beschreibung der Verifile API: nur die Aufrufe aus VERIFILE_API_OPERATIONS mit den Schemas, die
+    sie brauchen, und der Verifile-Adresse als Server. Entsteht aus der vollstaendigen Beschreibung, damit beide
+    nie auseinanderlaufen."""
+    global _verifile_openapi_schema
+    if _verifile_openapi_schema is not None:
+        return _verifile_openapi_schema
+    full = app.openapi()
+    paths: dict[str, Any] = {}
+    for path, method in VERIFILE_API_OPERATIONS:
+        operation = full.get("paths", {}).get(path, {}).get(method)
+        if operation:
+            paths.setdefault(path, {})[method] = copy.deepcopy(operation)
+    all_schemas = full.get("components", {}).get("schemas", {})
+    needed: set[str] = set()
+    _schema_refs(paths, needed)
+    pending = list(needed)
+    while pending:
+        inner: set[str] = set()
+        _schema_refs(all_schemas.get(pending.pop(), {}), inner)
+        for name in inner - needed:
+            needed.add(name)
+            pending.append(name)
+    components: dict[str, Any] = {"schemas": {name: all_schemas[name] for name in sorted(needed) if name in all_schemas}}
+    if "securitySchemes" in full.get("components", {}):
+        components["securitySchemes"] = full["components"]["securitySchemes"]
+    used_tags = {tag for operations in paths.values() for operation in operations.values() for tag in operation.get("tags", [])}
+    _verifile_openapi_schema = {
+        "openapi": full["openapi"],
+        "info": {"title": "Verifile API", "version": settings.api_version, "description": VERIFILE_API_DESCRIPTION},
+        "servers": [{"url": settings.verifile_api_url}],
+        "paths": paths,
+        "components": components,
+        "tags": [tag for tag in full.get("tags", []) if tag.get("name") in used_tags],
+    }
+    return _verifile_openapi_schema
+
+
+@app.get("/verifile/openapi.json", include_in_schema=False)
+def verifile_openapi_json() -> JSONResponse:
+    return JSONResponse(verifile_openapi())

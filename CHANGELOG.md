@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.9.0 (2026-11-18)
+
+Entwickler-Eingang für Verifile. Anlass: Wer Verifile kennt, sucht API und MCP-Server unter verifile.it und fand dort nichts, obwohl beides unter doi-api.sendlabs.de bereitsteht.
+
+- Verifile API unter `https://verifile.it/api`: nginx reicht dort nur die Nachweis-Aufrufe der API durch (`GET /v1/poe/{hash}`, `POST /v1/poe/verify`, `POST /v1/poe/public`, `GET /v1/poe/public/quota`, `POST /v1/poe`, `GET /v1/poe/quota`, `GET /v1/status`). Alles andere antwortet mit 404 im Fehlerformat der API. Die beiden Datei-Uploads fehlen bewusst, weil bei Verifile die Datei nie den Rechner verlässt. Kontingente und Schlüssel sind dieselben wie unter der Hauptadresse. `X-Forwarded-For` wird dort überschrieben statt ergänzt.
+- Neue Route `GET /verifile/openapi.json` (unter `https://verifile.it/api/openapi.json`): OpenAPI-Beschreibung nur dieser Aufrufe mit den Schemas, die sie brauchen, und der Verifile-Adresse als Server. Sie entsteht aus der vollständigen Beschreibung (`VERIFILE_API_OPERATIONS` in `main.py`), neue Einstellung `DOI_VERIFILE_API_URL`.
+- MCP-Server 1.6.0: neue Einstellung `DOI_MCP_PROFILE`. `doichain` (Standard) bietet wie bisher alle 13 Werkzeuge, `verifile` nur die vier Nachweis-Werkzeuge (`anchor_proof`, `check_proof`, `hash_text`, `get_anchoring_quota`) unter dem Namen Verifile mit eigener Anleitung für den Agenten. `/health` nennt das Profil.
+- Neuer Dienst `verifile-mcp` (`deploy/verifile-mcp.service`, 127.0.0.1:8083, derselbe Code, dieselbe venv und derselbe Benutzer wie `doichain-mcp`), erreichbar unter `https://verifile.it/mcp`. Der Installer erzeugt `/etc/doichain-mcp/verifile-mcp.env`. Browser werden von `/mcp` auf die Anleitung geleitet.
+- Verifile: neue Seite `developers/` (Deutsch und Englisch) mit Beispielen in curl, Python und JavaScript, Tabelle der Aufrufe, Live-Abfrage, Einbauanleitung für den MCP-Server und den Grenzen. Startseite mit Abschnitt „Für Entwickler und KI-Agenten“ und Menüpunkt, dazu `llms.txt` und `icon.svg`.
+- `deploy/nginx-verifile.conf`: eigene Ratenzonen `verifile_api` und `verifile_mcp`, Pfadmuster der erlaubten Aufrufe, `connect-src 'self'` in der Content-Security-Policy für die Live-Abfrage. Auf dem Server von Hand übernommen, weil certbot die Datei verwaltet (Sicherung `verifile.bak-20261118`).
+- Tests: zwei neue in `tests/test_poe.py`. Sie prüfen den Ausschnitt der OpenAPI-Beschreibung und dass das Pfadmuster in der nginx-Vorlage genau die dokumentierten Aufrufe durchlässt.
+
 ## 1.8.0 (2026-11-14)
 
 Verbrauchsbuch und Betriebsauskunft. Anlass: Am 14.11.2026 lag das Wallet unbemerkt unter der Reserve von 5 DOI, die Nachweise mit poe-Schlüssel pausierten. Niemand wusste, wer das Guthaben verbraucht.

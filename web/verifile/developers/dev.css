@@ -1,0 +1,33 @@
+/* Verifile, Seite für Entwickler. Ergänzt ../style.css um Codeblöcke und Tabellen. */
+.hero .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; text-align: left; }
+.section h3 { font-size: 1.15rem; margin: 30px 0 8px; letter-spacing: -.01em; }
+.section h4 { font-size: 1rem; margin: 20px 0 6px; color: var(--text); }
+.section p { color: var(--muted); }
+.section p code, .section td code, .section li code, details code { font-family: var(--mono); font-size: .86em; background: rgba(0,0,0,.3); border: 1px solid var(--card-border); border-radius: 6px; padding: 1px 6px; color: var(--text); word-break: break-word; }
+.addr { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.addr span { font-size: .75rem; font-weight: 700; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.addr code { font-size: 1rem !important; color: var(--accent) !important; padding: 6px 12px !important; border-radius: 10px !important; }
+
+.code { position: relative; margin: 10px 0 14px; background: rgba(0,0,0,.38); border: 1px solid var(--card-border); border-radius: 14px; padding: 34px 16px 14px; overflow-x: auto; }
+.code code { font-family: var(--mono); font-size: .84rem; line-height: 1.6; color: var(--text); white-space: pre; }
+.code::before { content: attr(data-label); position: absolute; left: 16px; top: 9px; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.code .copy { position: absolute; right: 8px; top: 6px; background: transparent; border: 1px solid var(--card-border); color: var(--muted); border-radius: 8px; padding: 3px 10px; font: inherit; font-size: .75rem; cursor: pointer; }
+.code .copy:hover { color: var(--text); border-color: var(--accent); }
+.code .copy.done { color: var(--accent); border-color: var(--accent); }
+.code.out { padding-top: 14px; max-height: 420px; }
+.code.out::before { content: none; }
+.code.out.err code { color: var(--danger); }
+
+.table-wrap { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--card-border); border-radius: 14px; background: var(--card); }
+.tbl { border-collapse: collapse; width: 100%; font-size: .93rem; }
+.tbl th, .tbl td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--card-border); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl th { color: var(--muted); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; }
+.tbl td { color: var(--muted); }
+.tbl td:first-child { white-space: nowrap; color: var(--text); }
+
+.try { margin: 18px 0 8px; }
+.say { color: var(--text); padding-left: 20px; margin: 8px 0 14px; }
+.say li { margin: 4px 0; }
+.more { margin-top: 22px; }
+@media (max-width: 640px) { .tbl td:first-child { white-space: normal; } }

@@ -43,6 +43,7 @@ Drei Web-Oberflächen liegen im Ordner `web/` und werden vom Installer mit ausge
 - [Erste Aufrufe](#erste-aufrufe)
 - [Proof of Existence](#proof-of-existence)
 - [MCP-Server für KI-Agenten](#mcp-server-für-ki-agenten)
+- [Verifile für Entwickler: API und MCP unter verifile.it](#verifile-für-entwickler-api-und-mcp-unter-verifileit)
 - [Betrieb](#betrieb)
 - [Lokale Entwicklung](#lokale-entwicklung)
 - [Projektstruktur](#projektstruktur)
@@ -292,6 +293,29 @@ Namen fragt der MCP-Server über `GET /v1/name?name=…` ab, weil Namen mit `/hi
 MCP-Verzeichnis als `io.github.neubuot/doichain` eingetragen. `server.json`, README und Workflows pflegt das öffentliche Repo,
 `server.py`, Landingpage und systemd-Unit dieses Repo. Abgleich mit `bash deploy/sync-public-mcp.sh`, eine neue Version
 im Verzeichnis entsteht durch einen Tag `vX.Y.Z` im öffentlichen Repo (GitHub Actions mit OIDC).
+
+## Verifile für Entwickler: API und MCP unter verifile.it
+
+Seit 1.9.0 hat Verifile einen eigenen Eingang für Entwickler. Es ist kein zweites System, sondern ein Ausschnitt
+dieser API und dieses MCP-Servers unter der Adresse, unter der Nutzer Verifile kennen:
+
+| Adresse | Inhalt |
+|---|---|
+| `https://verifile.it/developers/` | Anleitung mit Beispielen, Live-Abfrage und Grenzen (`web/verifile/developers`, Deutsch und Englisch) |
+| `https://verifile.it/api` | nur die Nachweis-Aufrufe: `GET /v1/poe/{hash}`, `POST /v1/poe/verify`, `POST /v1/poe/public`, `GET /v1/poe/public/quota`, `POST /v1/poe`, `GET /v1/poe/quota`, `GET /v1/status`. Keine Datei-Uploads, alles andere 404 |
+| `https://verifile.it/api/openapi.json` | OpenAPI-Beschreibung dieses Ausschnitts (Route `GET /verifile/openapi.json`) |
+| `https://verifile.it/mcp` | MCP-Server mit den vier Nachweis-Werkzeugen (Dienst `verifile-mcp`, 127.0.0.1:8083, `DOI_MCP_PROFILE=verifile`) |
+| `https://verifile.it/llms.txt` | Kurzbeschreibung für KI-Agenten |
+
+Die Liste der Aufrufe steht an zwei Stellen, die zusammenpassen müssen: `VERIFILE_API_OPERATIONS` in
+`doichain_api/main.py` und das Pfadmuster in `deploy/nginx-verifile.conf`. `tests/test_poe.py` prüft das.
+Kontingente und Schlüssel sind dieselben wie unter der Hauptadresse (ohne Schlüssel 3 je Tag und IP, mit dem
+öffentlichen poe-Schlüssel über den MCP-Server 10 je Tag und IP).
+
+```bash
+claude mcp add --scope user --transport http verifile https://verifile.it/mcp
+curl https://verifile.it/api/v1/poe/<sha256>
+```
 
 ## Betrieb
 

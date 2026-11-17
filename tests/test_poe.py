@@ -567,3 +567,64 @@ def test_tx_proof_unconfirmed_gives_409(node, client, monkeypatch):
     monkeypatch.setattr(main.rpc, "call", fake_call)
     response = client.get("/v1/tx/" + "d" * 64 + "/proof")
     assert response.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Verifile API: Nachweis-Ausschnitt unter https://verifile.it/api
+# ---------------------------------------------------------------------------
+
+def verifile_nginx_pattern() -> "re.Pattern[str]":
+    import pathlib
+    import re
+
+    conf = (pathlib.Path(__file__).resolve().parent.parent / "deploy" / "nginx-verifile.conf").read_text(encoding="utf-8")
+    match = re.search(r'location ~ "(\^/api/v1/[^"]+)"', conf)
+    assert match, "Muster der erlaubten Pfade in deploy/nginx-verifile.conf nicht gefunden"
+    return re.compile(match.group(1))
+
+
+def test_verifile_openapi_contains_only_the_proof_calls(client, fresh_openapi):
+    main._verifile_openapi_schema = None
+    response = client.get("/verifile/openapi.json")
+    assert response.status_code == 200, response.text
+    schema = response.json()
+    assert schema["info"]["title"] == "Verifile API" and schema["info"]["version"] == main.settings.api_version
+    assert schema["servers"] == [{"url": "https://verifile.it/api"}]
+    operations = {(path, method) for path, methods in schema["paths"].items() for method in methods}
+    assert operations == set(main.VERIFILE_API_OPERATIONS)
+    # Keine Uploads, kein Wallet, keine Namen: Bei Verifile bleibt die Datei beim Nutzer.
+    assert not any("file" in path or "wallet" in path or "name" in path for path in schema["paths"])
+    # Jeder Verweis auf ein Schema muss im Ausschnitt aufloesbar sein.
+    found: set[str] = set()
+    main._schema_refs(schema["paths"], found)
+    main._schema_refs(schema["components"]["schemas"], found)
+    assert found and found <= set(schema["components"]["schemas"])
+    full = client.get("/openapi.json").json()
+    assert len(schema["components"]["schemas"]) < len(full["components"]["schemas"])
+    assert "/verifile/openapi.json" not in full["paths"]
+    # Oeffentliche Aufrufe bleiben ohne Schluesselpflicht, POST /v1/poe braucht einen.
+    assert {} in schema["paths"]["/v1/poe/{hash}"]["get"]["security"]
+    assert {} not in schema["paths"]["/v1/poe"]["post"]["security"]
+    main._verifile_openapi_schema = None
+
+
+def test_verifile_nginx_allows_exactly_the_documented_calls():
+    pattern = verifile_nginx_pattern()
+    for path, _method in main.VERIFILE_API_OPERATIONS:
+        assert pattern.match("/api" + path.replace("{hash}", HASH)), path
+    for blocked in (
+        "/api/v1/poe/file",
+        "/api/v1/poe/verify/file",
+        "/api/v1/poe/" + HASH + "/",
+        "/api/v1/poe/kurz",
+        "/api/v1/wallet",
+        "/api/v1/wallet/report",
+        "/api/v1/name/doi",
+        "/api/v1/names",
+        "/api/v1/rpc",
+        "/api/v1/tx/send",
+        "/api/v1/seal/github",
+        "/api/docs",
+        "/api/v1/status/",
+    ):
+        assert not pattern.match(blocked), blocked

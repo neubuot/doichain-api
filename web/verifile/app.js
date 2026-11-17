@@ -8,7 +8,11 @@
 
   const I18N = {
     de: {
-      "nav.how": "So funktioniert es", "nav.verify": "Nachweis prüfen",
+      "nav.how": "So funktioniert es", "nav.verify": "Nachweis prüfen", "nav.dev": "Entwickler", "foot.dev": "API und MCP",
+      "dev.title": "Für Entwickler und KI-Agenten", "dev.mcpt": "MCP-Server", "dev.btn": "Zur Anleitung für Entwickler",
+      "dev.lead": "Verifile gibt es auch als REST-API und als MCP-Server für Claude, ChatGPT, Cursor und andere Agenten. Ohne Konto, und auch dort bleibt die Datei bei Ihnen.",
+      "dev.api": "Nachweise per HTTP prüfen und anlegen, mit Beispielen in curl, Python und JavaScript.",
+      "dev.mcp": "Vier Werkzeuge für KI-Agenten: verankern, prüfen, Text hashen, Kontingent abfragen.",
       "hero.eyebrow": "Proof of Existence auf der Doichain",
       "hero.title": "Beweisen Sie, dass eine Datei heute existiert.",
       "hero.lead": "Ihr Dokument bleibt auf Ihrem Rechner. Der Browser berechnet einen Fingerabdruck (SHA-256), Verifile verankert ihn in der Doichain. Ab dann kann jeder prüfen, dass genau diese Datei zu diesem Zeitpunkt existierte.",
@@ -48,7 +52,11 @@
       "print.status.confirmed": "Bestätigt / confirmed", "print.status.pending": "Ausstehend / pending", "print.status.expired": "Name abgelaufen, Nachweis gültig / name expired, proof still valid",
     },
     en: {
-      "nav.how": "How it works", "nav.verify": "Verify a proof",
+      "nav.how": "How it works", "nav.verify": "Verify a proof", "nav.dev": "Developers", "foot.dev": "API and MCP",
+      "dev.title": "For developers and AI agents", "dev.mcpt": "MCP server", "dev.btn": "Open the developer guide",
+      "dev.lead": "Verifile is also available as a REST API and as an MCP server for Claude, ChatGPT, Cursor and other agents. No account, and your file stays with you there as well.",
+      "dev.api": "Verify and create proofs over HTTP, with examples in curl, Python and JavaScript.",
+      "dev.mcp": "Four tools for AI agents: anchor, verify, hash a text, check the allowance.",
       "hero.eyebrow": "Proof of existence on the Doichain",
       "hero.title": "Prove that a file exists today.",
       "hero.lead": "Your document stays on your device. The browser computes a fingerprint (SHA-256) and Verifile anchors it in the Doichain. From then on anyone can verify that exactly this file existed at that moment.",

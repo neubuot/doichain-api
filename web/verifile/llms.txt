@@ -1,0 +1,41 @@
+# Verifile
+
+> Proof of existence for files and texts. Verifile anchors the SHA-256 of a document on the Doichain, a public
+> blockchain of the Bitcoin family, and lets anyone verify it later. The document itself never leaves the user's
+> device, only the 64-character hash is sent. A service by DOI Labs AG.
+
+A confirmed proof shows that a document with exactly this hash existed no later than the block time. It does not
+show who submitted it. Note and file name of a proof are public forever, so they must not contain personal data
+or secrets. A proof is final with the first confirmation, usually within 10 minutes.
+
+## For people
+
+- [Verifile web app](https://verifile.it/): drop a file, the browser computes the hash, one click anchors it
+- Verification link for any hash: https://verifile.it/#<sha256>
+
+## REST API
+
+Base URL: https://verifile.it/api (no account, no key for the calls below, JSON in and out)
+
+- [Developer guide](https://verifile.it/developers/): examples in curl, Python and JavaScript, limits
+- [OpenAPI description](https://verifile.it/api/openapi.json)
+- `GET /v1/poe/{sha256}`: check a hash. `status` is unknown, pending, confirmed or expired. `first_anchored`
+  holds block height, block time and transaction of the first anchoring, which is the proof time
+- `POST /v1/poe/public` with `{"hash": "<sha256>", "note": "optional", "filename": "optional"}`: anchor a hash
+  without a key, 3 per day and IP address
+- `GET /v1/poe/public/quota`: remaining anchorings for today
+- `POST /v1/poe` and `GET /v1/poe/quota`: the same with an API key in the `X-API-Key` header and its own quota
+
+Never send a document to the API and never guess a hash. Compute it locally, for example with `sha256sum file`
+or `Get-FileHash file -Algorithm SHA256`.
+
+## MCP server for AI agents
+
+- Address: https://verifile.it/mcp (Streamable HTTP, no sign-in)
+- Tools: `anchor_proof`, `check_proof`, `hash_text`, `get_anchoring_quota`
+- [Setup for Claude, ChatGPT, Cursor and VS Code](https://verifile.it/developers/#mcp)
+
+## More
+
+- [Doichain API](https://doi-api.sendlabs.de/): the full API behind Verifile (names, blocks, transactions, addresses)
+- [Doichain MCP server](https://doi-api.sendlabs.de/mcp): all 13 tools including names and chain data

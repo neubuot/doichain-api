@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verifile für Entwickler: API und MCP-Server</title>
+  <meta name="description" content="Verifile in eigene Programme und KI-Agenten einbauen: REST-API und MCP-Server für Proof of Existence auf der Doichain. Ohne Konto, die Datei bleibt bei Ihnen.">
+  <meta name="theme-color" content="#0b1020">
+  <link rel="canonical" href="https://verifile.it/developers/">
+  <meta property="og:title" content="Verifile für Entwickler: API und MCP-Server">
+  <meta property="og:description" content="REST-API und MCP-Server für Proof of Existence auf der Doichain. Ohne Konto, die Datei bleibt bei Ihnen.">
+  <meta property="og:url" content="https://verifile.it/developers/">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="../icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="dev.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="grid"></div></div>
+
+  <header class="top">
+    <a class="brand" href="../">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 64 64" width="28" height="28"><rect width="64" height="64" rx="14" fill="#101736"/><path d="M18 34l10 10 18-22" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>Verifile</span>
+    </a>
+    <nav class="nav">
+      <a href="#api">API</a>
+      <a href="#mcp">MCP</a>
+      <a href="#rules" data-i18n="nav.rules">Grenzen und Regeln</a>
+      <a href="../" data-i18n="nav.app">Zur App</a>
+      <button class="lang" id="langToggle" type="button" aria-label="Sprache wechseln">EN</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow" data-i18n="hero.eyebrow">Für Entwickler und KI-Agenten</p>
+      <h1 data-i18n="hero.title">Verifile in eigene Programme einbauen.</h1>
+      <p class="lead" data-i18n="hero.lead">Alles, was die Verifile-Seite kann, gibt es auch als REST-API und als MCP-Server für KI-Agenten: den Fingerabdruck einer Datei in der Doichain verankern und später prüfen. Ohne Konto und ohne Anmeldung.</p>
+      <div class="facts">
+        <div class="step"><h3 data-i18n="fact.1t">Kein Konto nötig</h3><p data-i18n="fact.1">Prüfen ist frei. Verankern geht ohne Schlüssel innerhalb eines Tageskontingents.</p></div>
+        <div class="step"><h3 data-i18n="fact.2t">Die Datei bleibt bei Ihnen</h3><p data-i18n="fact.2">An den Server geht nur der SHA-256, 64 Zeichen. Datei-Uploads gibt es hier bewusst nicht.</p></div>
+        <div class="step"><h3 data-i18n="fact.3t">Zwei Wege</h3><p data-i18n="fact.3">Die API für eigenen Code, der MCP-Server für Claude, ChatGPT, Cursor und andere Agenten.</p></div>
+      </div>
+    </section>
+
+    <section class="section" id="api">
+      <h2 data-i18n="api.title">REST-API</h2>
+      <p class="addr"><span data-i18n="api.base">Basis-Adresse</span> <code>https://verifile.it/api</code></p>
+      <p data-i18n="api.lead">Antworten sind JSON. Fehler kommen einheitlich als <code>{"error": {"type": "…", "code": n, "message": "…"}}</code>. Aufrufe aus dem Browser sind von jeder Seite aus erlaubt (CORS).</p>
+
+      <h3 data-i18n="api.s1">1. Fingerabdruck berechnen</h3>
+      <p data-i18n="api.s1p">Der SHA-256 entsteht auf Ihrem Rechner. Jedes geänderte Bit ergibt einen anderen Wert.</p>
+      <pre class="code" data-label="Linux, macOS"><code>sha256sum vertrag.pdf        # macOS: shasum -a 256 vertrag.pdf</code></pre>
+      <pre class="code" data-label="Windows PowerShell"><code>(Get-FileHash vertrag.pdf -Algorithm SHA256).Hash.ToLower()</code></pre>
+
+      <h3 data-i18n="api.s2">2. Nachweis prüfen</h3>
+      <pre class="code" data-label="curl"><code>curl https://verifile.it/api/v1/poe/&lt;sha256&gt;</code></pre>
+      <pre class="code" data-label="JSON (Beispiel)"><code>{
+  "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "status": "confirmed",
+  "exists": true,
+  "expired": false,
+  "first_anchored": {
+    "height": 441193,
+    "block_time_iso": "2026-11-16T16:08:36Z",
+    "confirmations": 193,
+    "txid": "0a222ff5…",
+    "value_json": {"v": 1, "alg": "sha256", "hash": "9f86d081…", "ts": "2026-11-16T16:05:12Z", "note": "Vertrag Version 3"},
+    "explorer_tx": "https://doi-explorer.le-space.de/tx/0a222ff5…"
+  }
+}</code></pre>
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead><tr><th><code>status</code></th><th data-i18n="api.st.h">Bedeutung</th></tr></thead>
+          <tbody>
+            <tr><td><code>unknown</code></td><td data-i18n="api.st.unknown">Für diesen Hash gibt es keinen Eintrag.</td></tr>
+            <tr><td><code>pending</code></td><td data-i18n="api.st.pending">Die Transaktion wartet auf den nächsten Block, im Mittel zehn Minuten.</td></tr>
+            <tr><td><code>confirmed</code></td><td data-i18n="api.st.confirmed">Verankert. Das Dokument existierte spätestens zur Blockzeit in <code>first_anchored</code>.</td></tr>
+            <tr><td><code>expired</code></td><td data-i18n="api.st.expired">Der Name ist abgelaufen, der Nachweis in <code>first_anchored</code> bleibt gültig.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p data-i18n="api.s2p">Maßgeblich ist immer <code>first_anchored</code>, die erste Verankerung. Die Felder auf oberster Ebene beschreiben den heutigen Zustand des Namens und können nach einem Ablauf von einer späteren Registrierung stammen.</p>
+
+      <form class="verify-form try" id="tryForm">
+        <input type="text" id="tryHash" placeholder="SHA-256, 64 Hex-Zeichen" aria-label="SHA-256" spellcheck="false" autocomplete="off">
+        <button class="btn primary" type="submit" data-i18n="try.btn">Live abfragen</button>
+      </form>
+      <pre class="code out" id="tryOut" hidden><code></code></pre>
+
+      <h3 data-i18n="api.s3">3. Nachweis anlegen</h3>
+      <pre class="code" data-label="curl"><code>curl -X POST https://verifile.it/api/v1/poe/public \
+  -H "Content-Type: application/json" \
+  -d '{"hash": "&lt;sha256&gt;", "note": "Vertrag Version 3"}'</code></pre>
+      <p data-i18n="api.s3p">Antwort <code>201</code> mit <code>txid</code>, <code>status: pending</code> und dem verbleibenden Kontingent in <code>quota</code>. <code>note</code> (bis 160 Zeichen) und <code>filename</code> (bis 80 Zeichen) sind freiwillig und danach für immer öffentlich. Ist der Hash schon verankert, kommt <code>409</code> und es entsteht kein zweiter Eintrag. Endgültig ist der Nachweis mit dem nächsten Block, danach liefert die Prüfabfrage Blockhöhe und Zeit.</p>
+
+      <h3 data-i18n="api.s4">Alle Aufrufe</h3>
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead><tr><th data-i18n="api.t.call">Aufruf</th><th data-i18n="api.t.key">Schlüssel</th><th data-i18n="api.t.what">Zweck</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /v1/poe/{sha256}</code></td><td data-i18n="api.t.none">keiner</td><td data-i18n="api.t.1">Nachweis prüfen</td></tr>
+            <tr><td><code>POST /v1/poe/verify</code></td><td data-i18n="api.t.none">keiner</td><td data-i18n="api.t.2">dasselbe mit <code>{"hash": "…"}</code> im Rumpf</td></tr>
+            <tr><td><code>POST /v1/poe/public</code></td><td data-i18n="api.t.none">keiner</td><td data-i18n="api.t.3">Nachweis anlegen, 3 je Tag und IP-Adresse</td></tr>
+            <tr><td><code>GET /v1/poe/public/quota</code></td><td data-i18n="api.t.none">keiner</td><td data-i18n="api.t.4">verbleibendes Kontingent ohne Schlüssel</td></tr>
+            <tr><td><code>POST /v1/poe</code></td><td><code>X-API-Key</code></td><td data-i18n="api.t.5">Nachweis anlegen mit eigenem Schlüssel und eigenem Kontingent</td></tr>
+            <tr><td><code>GET /v1/poe/quota</code></td><td><code>X-API-Key</code></td><td data-i18n="api.t.6">verbleibendes Kontingent des Schlüssels</td></tr>
+            <tr><td><code>GET /v1/status</code></td><td data-i18n="api.t.none">keiner</td><td data-i18n="api.t.7">Zustand der Kette. <code>wallet.public_poe_available</code> sagt, ob gerade verankert werden kann</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><span data-i18n="api.openapi">Maschinenlesbar als OpenAPI:</span> <a href="https://verifile.it/api/openapi.json">https://verifile.it/api/openapi.json</a></p>
+
+      <h3>Python</h3>
+      <pre class="code" data-label="Python"><code>import hashlib
+import requests
+
+API = "https://verifile.it/api/v1"
+
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 &lt;&lt; 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+h = sha256_of("vertrag.pdf")
+proof = requests.get(f"{API}/poe/{h}", timeout=30).json()
+if proof["status"] == "unknown":
+    r = requests.post(f"{API}/poe/public", json={"hash": h, "note": "Vertrag Version 3"}, timeout=60)
+    r.raise_for_status()
+    print("anchored, txid", r.json()["txid"])
+else:
+    first = proof.get("first_anchored") or {}
+    print(proof["status"], first.get("block_time_iso"))</code></pre>
+
+      <h3>JavaScript</h3>
+      <pre class="code" data-label="JavaScript"><code>const API = "https://verifile.it/api/v1";
+
+async function sha256Hex(buffer) {
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return [...new Uint8Array(digest)].map((b) =&gt; b.toString(16).padStart(2, "0")).join("");
+}
+
+const file = document.querySelector("input[type=file]").files[0];
+const hash = await sha256Hex(await file.arrayBuffer());
+const proof = await (await fetch(`${API}/poe/${hash}`)).json();
+console.log(proof.status, proof.first_anchored?.block_time_iso);</code></pre>
+
+      <p data-i18n="api.link">Einen Nachweis verlinken Sie mit <code>https://verifile.it/#&lt;sha256&gt;</code>. Die Seite zeigt ihn dann fertig an, auch wenn er über die API entstanden ist.</p>
+    </section>
+
+    <section class="section" id="mcp">
+      <h2 data-i18n="mcp.title">MCP-Server für KI-Agenten</h2>
+      <p class="addr"><span data-i18n="mcp.addr">Adresse</span> <code>https://verifile.it/mcp</code></p>
+      <p data-i18n="mcp.lead">Das Model Context Protocol ist der offene Standard, über den KI-Anwendungen externe Werkzeuge einbinden. Einmal eingetragen, entscheidet der Agent selbst, wann er welches Werkzeug nutzt. Sie sagen ihm einfach, was Sie wollen. Transport Streamable HTTP, keine Anmeldung.</p>
+
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead><tr><th data-i18n="mcp.t.tool">Werkzeug</th><th data-i18n="mcp.t.what">Wofür</th></tr></thead>
+          <tbody>
+            <tr><td><code>anchor_proof</code></td><td data-i18n="mcp.t.1">Hash eines Dokuments verankern. Ist er schon verankert, kommt der bestehende Nachweis zurück.</td></tr>
+            <tr><td><code>check_proof</code></td><td data-i18n="mcp.t.2">Ist der Hash verankert, seit wann und in welchem Block.</td></tr>
+            <tr><td><code>hash_text</code></td><td data-i18n="mcp.t.3">SHA-256 eines kurzen Textes, um Aussagen oder Nachrichten zu verankern. Dateien hasht der Agent selbst auf Ihrem Rechner.</td></tr>
+            <tr><td><code>get_anchoring_quota</code></td><td data-i18n="mcp.t.4">Verbleibende Nachweise des Tages.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 data-i18n="mcp.setup">Einbinden</h3>
+      <h4>Claude Code</h4>
+      <pre class="code" data-label="Terminal"><code>claude mcp add --scope user --transport http verifile https://verifile.it/mcp</code></pre>
+      <h4 data-i18n="mcp.claude.h">Claude im Browser und als Desktop-App</h4>
+      <p data-i18n="mcp.claude">Anpassen, dann Konnektoren, dann „Benutzerdefinierten Konnektor hinzufügen“. Name „Verifile“, als URL die Adresse oben. Im Chat über das Plus-Zeichen einschalten.</p>
+      <h4>ChatGPT</h4>
+      <p data-i18n="mcp.chatgpt">In den Einstellungen den Entwicklermodus einschalten, dann eine App mit der Adresse oben anlegen, Authentifizierung „Keine“. Das geht in den Tarifen Plus, Pro, Business, Enterprise und Education.</p>
+      <h4>Cursor</h4>
+      <pre class="code" data-label="~/.cursor/mcp.json"><code>{"mcpServers": {"verifile": {"url": "https://verifile.it/mcp"}}}</code></pre>
+      <h4>VS Code</h4>
+      <pre class="code" data-label=".vscode/mcp.json"><code>{"servers": {"verifile": {"type": "http", "url": "https://verifile.it/mcp"}}}</code></pre>
+
+      <h3 data-i18n="mcp.say">Was Sie dann sagen können</h3>
+      <ul class="say">
+        <li data-i18n="mcp.say1">„Verankere den Hash von angebot.pdf in der Doichain.“</li>
+        <li data-i18n="mcp.say2">„Prüfe, ob diese Datei schon verankert ist, und seit wann.“</li>
+        <li data-i18n="mcp.say3">„Verankere diesen Text als Nachweis: …“</li>
+      </ul>
+      <p data-i18n="mcp.note">Ein Agent mit Dateizugriff (Claude Code, Cursor, VS Code) berechnet den Hash selbst. Im reinen Chat ohne Dateizugriff ziehen Sie die Datei auf <a href="../">verifile.it</a> und geben dem Agenten den Hash.</p>
+    </section>
+
+    <section class="section" id="rules">
+      <h2 data-i18n="rules.title">Grenzen und Regeln</h2>
+      <details open><summary data-i18n="rules.q1">Wie viele Nachweise sind frei?</summary><p data-i18n="rules.a1">Über die API ohne Schlüssel 3 je Tag und IP-Adresse, über den MCP-Server 10 je Tag und IP-Adresse. Dazu gibt es eine Tagesgrenze für alle zusammen. Der Tag wechselt um 00:00 UTC. Nutzer gehosteter Chat-Apps teilen sich das Kontingent der Server ihres Anbieters. Prüfen ist nicht begrenzt, nur gedrosselt auf 10 Anfragen je Sekunde.</p></details>
+      <details><summary data-i18n="rules.q2">Ich brauche mehr. Was dann?</summary><p data-i18n="rules.a2">Auf Anfrage vergibt DOI Labs einen eigenen Schlüssel mit eigenem Tageskontingent. Er wird im Header <code>X-API-Key</code> mitgeschickt, bei der API an <code>POST /v1/poe</code>, beim MCP-Server als Header des Konnektors. Die Kontaktadresse steht im Impressum.</p></details>
+      <details><summary data-i18n="rules.q3">Was wird öffentlich?</summary><p data-i18n="rules.a3">Der Hash, die Notiz und der Dateiname, wenn Sie sie mitschicken. Alle drei stehen danach dauerhaft und für jeden lesbar in der Doichain. Schreiben Sie deshalb nie personenbezogene Daten oder Geheimnisse hinein. Aus dem Hash lässt sich die Datei nicht zurückrechnen.</p></details>
+      <details><summary data-i18n="rules.q4">Was beweist ein Nachweis und was nicht?</summary><p data-i18n="rules.a4">Er zeigt, dass ein Dokument mit genau diesem Hash spätestens zur Blockzeit existierte. Er zeigt nicht, wer es eingereicht hat. Die Einträge gehören dem Wallet von DOI Labs, das die Gebühr bezahlt.</p></details>
+      <details><summary data-i18n="rules.q5">Wie lange gilt ein Nachweis?</summary><p data-i18n="rules.a5">Der Zeitstempel bleibt dauerhaft in der Kettenhistorie. Der Name des Eintrags ist 36.000 Blöcke aktiv, das sind rund 250 Tage. Danach könnte ihn jemand neu registrieren. Deshalb nennt die API in <code>first_anchored</code> immer die erste Verankerung. Ein abgelaufener Hash wird nur dann erneut registriert, wenn Sie das ausdrücklich verlangen.</p></details>
+      <details><summary data-i18n="rules.q6">Was, wenn gerade nichts verankert werden kann?</summary><p data-i18n="rules.a6">Fällt das Betriebsguthaben unter eine Reserve, pausiert das Verankern und die API antwortet mit <code>503</code>. Prüfen geht immer. Ein fehlgeschlagener Versuch kostet kein Kontingent.</p></details>
+      <p class="more" data-i18n="rules.more">Verifile ist der Nachweis-Ausschnitt der <a href="https://doi-api.sendlabs.de/" target="_blank" rel="noopener">Doichain API</a>. Dort gibt es zusätzlich Namen, Blöcke, Transaktionen und Adressen, eine Oberfläche zum Ausprobieren unter <a href="https://doi-api.sendlabs.de/docs" target="_blank" rel="noopener">/docs</a> und den <a href="https://doi-api.sendlabs.de/mcp" target="_blank" rel="noopener">Doichain MCP-Server</a> mit allen 13 Werkzeugen.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p><span data-i18n="foot.by">Ein Dienst der DOI Labs AG auf Basis der</span> <a href="https://doi-api.sendlabs.de/" target="_blank" rel="noopener">Doichain API</a>. <span data-i18n="foot.privacy">Keine Cookies, kein Tracking, keine Uploads.</span></p>
+    <p><a href="../">Verifile</a> · <a href="https://www.doichain.org/en/" target="_blank" rel="noopener">DOI Labs</a> · <a href="https://doi-explorer.le-space.de" target="_blank" rel="noopener">Doichain Explorer</a> · <a href="https://www.doichain.org/en/imprint/" target="_blank" rel="noopener" data-i18n="foot.imprint">Impressum</a></p>
+  </footer>
+
+  <script src="dev.js"></script>
+</body>
+</html>

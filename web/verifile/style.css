@@ -122,6 +122,10 @@ h1 { font-size: clamp(2rem, 5.5vw, 3.4rem); line-height: 1.08; letter-spacing: -
 .step .num { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 10px; background: rgba(52,211,153,.15); color: var(--accent); font-weight: 800; margin-bottom: 10px; }
 .step h3 { margin: 0 0 6px; font-size: 1.05rem; }
 .step p { margin: 0; color: var(--muted); font-size: .95rem; }
+.step p code { font-family: var(--mono); font-size: .85rem; color: var(--accent); word-break: break-all; }
+.step p + p { margin-top: 8px; }
+.dev-cta { margin-top: 18px; }
+a.btn { display: inline-block; }
 
 .verify-form { display: flex; gap: 10px; flex-wrap: wrap; }
 .verify-form input { flex: 1 1 320px; background: var(--card); border: 1px solid var(--card-border); color: var(--text); border-radius: 12px; padding: 12px 14px; font: inherit; font-family: var(--mono); font-size: .9rem; }

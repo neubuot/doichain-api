@@ -26,6 +26,7 @@
       <a href="#how" data-i18n="nav.how">So funktioniert es</a>
       <a href="#verify" data-i18n="nav.verify">Nachweis prüfen</a>
       <a href="#faq">FAQ</a>
+      <a href="developers/" data-i18n="nav.dev">Entwickler</a>
       <button class="lang" id="langToggle" type="button" aria-label="Sprache wechseln">EN</button>
     </nav>
   </header>
@@ -101,6 +102,16 @@
       </form>
     </section>
 
+    <section class="section" id="developers">
+      <h2 data-i18n="dev.title">Für Entwickler und KI-Agenten</h2>
+      <p data-i18n="dev.lead">Verifile gibt es auch als REST-API und als MCP-Server für Claude, ChatGPT, Cursor und andere Agenten. Ohne Konto, und auch dort bleibt die Datei bei Ihnen.</p>
+      <div class="steps">
+        <div class="step"><h3>REST-API</h3><p><code>https://verifile.it/api</code></p><p data-i18n="dev.api">Nachweise per HTTP prüfen und anlegen, mit Beispielen in curl, Python und JavaScript.</p></div>
+        <div class="step"><h3 data-i18n="dev.mcpt">MCP-Server</h3><p><code>https://verifile.it/mcp</code></p><p data-i18n="dev.mcp">Vier Werkzeuge für KI-Agenten: verankern, prüfen, Text hashen, Kontingent abfragen.</p></div>
+      </div>
+      <p class="dev-cta"><a class="btn primary" href="developers/" data-i18n="dev.btn">Zur Anleitung für Entwickler</a></p>
+    </section>
+
     <section class="section" id="faq">
       <h2>FAQ</h2>
       <details><summary data-i18n="faq.q1">Wird meine Datei hochgeladen?</summary><p data-i18n="faq.a1">Nein. Der Hash wird im Browser berechnet, die Bibliothek dafür liefert Verifile selbst aus. An den Doichain-Server gehen nur die 64 Zeichen des Hashes, dazu Ihre Notiz und, nur wenn Sie das Häkchen setzen, der Dateiname. Alles drei ist danach öffentlich in der Doichain lesbar, aus dem Hash lässt sich die Datei nicht rekonstruieren.</p></details>
@@ -113,7 +124,7 @@
 
   <footer class="foot">
     <p><span data-i18n="foot.by">Ein Dienst der DOI Labs AG auf Basis der</span> <a href="https://doi-api.sendlabs.de/" target="_blank" rel="noopener">Doichain API</a>. <span data-i18n="foot.privacy">Keine Cookies, kein Tracking, keine Uploads.</span></p>
-    <p><a href="https://www.doichain.org/en/" target="_blank" rel="noopener">DOI Labs</a> · <a href="https://doi-explorer.le-space.de" target="_blank" rel="noopener">Doichain Explorer</a> · <a href="https://doi-api.sendlabs.de/docs" target="_blank" rel="noopener">API</a> · <a href="https://www.doichain.org/en/imprint/" target="_blank" rel="noopener" data-i18n="foot.imprint">Impressum</a></p>
+    <p><a href="https://www.doichain.org/en/" target="_blank" rel="noopener">DOI Labs</a> · <a href="https://doi-explorer.le-space.de" target="_blank" rel="noopener">Doichain Explorer</a> · <a href="developers/" data-i18n="foot.dev">API und MCP</a> · <a href="https://www.doichain.org/en/imprint/" target="_blank" rel="noopener" data-i18n="foot.imprint">Impressum</a></p>
   </footer>
 
   <template id="printTemplate">

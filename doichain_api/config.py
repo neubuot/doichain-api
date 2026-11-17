@@ -69,6 +69,9 @@ class Settings:
     seal_per_day: int = int(os.environ.get("DOI_SEAL_PER_DAY", "300"))
     # Oeffentliche Adresse der API fuer absolute Links (Abzeichen, Pruefseite, Open-Graph-Karten).
     public_url: str = os.environ.get("DOI_API_PUBLIC_URL", "https://doi-api.sendlabs.de").rstrip("/")
+    # Adresse, unter der nginx den Nachweis-Ausschnitt dieser API als Verifile API ausliefert (Server-Eintrag
+    # in GET /verifile/openapi.json).
+    verifile_api_url: str = os.environ.get("DOI_VERIFILE_API_URL", "https://verifile.it/api").rstrip("/")
     github_oidc_issuer: str = "https://token.actions.githubusercontent.com"
     poe_prefix: str = os.environ.get("DOI_POE_PREFIX", "poe/")
     max_upload_bytes: int = int(os.environ.get("DOI_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
@@ -78,7 +81,7 @@ class Settings:
     # Namecoin-Grenzen, die Doichain Core 31 erbt.
     max_name_length: int = 255
     max_value_length: int = 520
-    api_version: str = "1.8.0"
+    api_version: str = "1.9.0"
 
 
 settings = Settings()
