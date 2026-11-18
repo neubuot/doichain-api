@@ -482,6 +482,66 @@ def test_keyed_quota_released_when_anchoring_fails(node, client, monkeypatch):
     assert quota.usage(ident, per_ip_day=2, per_day=3)["used_ip"] == before
 
 
+# ---------------------------------------------------------------------------
+# Eigener Zaehler fuer die Route ohne Schluessel (1.9.1)
+# ---------------------------------------------------------------------------
+
+NOKEY_IDENT = quota.NOKEY_PREFIX + "testclient"
+
+
+def nokey_usage() -> dict:
+    return quota.usage(NOKEY_IDENT, per_ip_day=main.settings.poe_nokey_per_ip_day, per_day=main.settings.poe_nokey_per_day)
+
+
+def test_nokey_quota_released_when_anchoring_fails(node, client, monkeypatch):
+    async def failing_call(method, *params, wallet=False, named=None):
+        if method == "name_doi":
+            raise RPCError(-6, "Insufficient funds")
+        return await node.call(method, *params, wallet=wallet, named=named)
+    monkeypatch.setattr(main.rpc, "call", failing_call)
+    before = nokey_usage()["used_ip"]
+    response = client.post("/v1/poe/public", json={"hash": "d9" * 32})
+    assert response.status_code != 201
+    assert nokey_usage()["used_ip"] == before
+
+
+def test_nokey_route_and_public_poe_key_count_separately(node, client):
+    """Bis 1.9.0 teilten sich beide Wege eine Zeile je IP-Adresse: Drei Nachweise ueber Verifile oder einen
+    MCP-Server sperrten die Route ohne Schluessel, und jeder Nachweis ohne Schluessel kostete auch einen der zehn."""
+    key_before = quota.usage("testclient")
+    nokey_before = nokey_usage()
+    assert nokey_before["used_ip"] == 0 and nokey_before["scope"] == "ip"
+    for i in range(3):
+        created = client.post("/v1/poe/public", json={"hash": f"d{i}" * 32, "note": "ohne Schluessel"})
+        assert created.status_code == 201, created.text
+        assert created.json()["quota"]["used_ip"] == i + 1 and created.json()["quota"]["scope"] == "ip"
+    refused = client.post("/v1/poe/public", json={"hash": "d3" * 32})
+    assert refused.status_code == 429
+    assert "dieser Adresse" in refused.json()["error"]["message"]
+    q = client.get("/v1/poe/public/quota").json()
+    assert (q["used_ip"], q["remaining_ip"], q["per_ip_day"], q["scope"]) == (3, 0, 3, "ip")
+    assert q["used_total"] == nokey_before["used_total"] + 3 and q["per_day"] == main.settings.poe_nokey_per_day
+    # Der Zaehler des oeffentlichen poe-Schluessels (Verifile, MCP-Server) hat davon nichts gemerkt ...
+    key_after = quota.usage("testclient")
+    assert (key_after["used_ip"], key_after["used_total"]) == (key_before["used_ip"], key_before["used_total"])
+    q_key = client.get("/v1/poe/quota", headers={"X-API-Key": POE_KEY}).json()
+    assert q_key["used_ip"] == key_before["used_ip"] and q_key["per_ip_day"] == main.settings.poe_public_per_ip_day
+    # ... und mit dem poe-Schluessel geht es weiter, ohne den Zaehler ohne Schluessel zu beruehren.
+    with_key = client.post("/v1/poe", json={"hash": "d4" * 32}, headers={"X-API-Key": POE_KEY})
+    assert with_key.status_code == 201, with_key.text
+    assert with_key.json()["quota"]["used_ip"] == key_before["used_ip"] + 1
+    assert with_key.json()["quota"]["used_total"] == key_before["used_total"] + 1
+    assert nokey_usage()["used_ip"] == 3 and nokey_usage()["used_total"] == nokey_before["used_total"] + 3
+
+
+def test_quota_scopes_of_identities():
+    assert quota._scope("203.0.113.7") == "ip" and quota._scope("2001:db8:1:2::/64") == "ip"
+    assert quota._scope(quota.NOKEY_PREFIX + "203.0.113.7") == "nokey"
+    assert quota._scope(quota.KEY_PREFIX + KEYED_ID) == "key" and quota._scope(quota.GH_PREFIX + "owner/repo") == "gh"
+    # Nach aussen bleibt es fuer beide IP-Zaehler bei "ip", Clients sehen keinen neuen Wert.
+    assert quota._public_scope("nokey") == "ip" and quota._public_scope("key") == "key"
+
+
 def test_key_fingerprint_is_stable():
     from doichain_api.auth import key_fingerprint
     assert key_fingerprint(POE_KEY_KEYED) == KEYED_ID

@@ -6,10 +6,15 @@ damit je IP-Adresse und insgesamt pro Tag entstehen duerfen. Schluessel mit eige
 Tagesgrenze (DOI_POE_KEYED_PER_DAY). Zaehler liegen in einer kleinen SQLite-Datei im StateDirectory des
 Dienstes, damit beide uvicorn-Worker dieselben Zahlen sehen.
 
-Die Zaehler-Identitaet ist entweder die IP-Adresse (Bereich "ip"), "key:<fingerprint>" (Bereich "key") oder
-"gh:<owner/repo>" (Bereich "gh", Siegel fuer Software-Releases ueber GitHub Actions, gezaehlt je Repository).
-Gesamtsummen werden je Bereich gebildet, Nachweise mit Schluesselkontingent belasten also nicht das
-Kontingent der oeffentlichen App und umgekehrt."""
+Die Zaehler-Identitaet ist entweder die IP-Adresse (Bereich "ip", oeffentlicher poe-Schluessel von Verifile und
+MCP-Server), "nokey:<ip>" (Bereich "nokey", POST /v1/poe/public ganz ohne Schluessel), "key:<fingerprint>"
+(Bereich "key") oder "gh:<owner/repo>" (Bereich "gh", Siegel fuer Software-Releases ueber GitHub Actions,
+gezaehlt je Repository). Gesamtsummen werden je Bereich gebildet, die Bereiche belasten sich gegenseitig nicht.
+
+Bis 1.9.0 zaehlten die Route ohne Schluessel und der oeffentliche poe-Schluessel auf dieselbe Zeile je
+IP-Adresse. Wer drei Nachweise ueber Verifile oder einen MCP-Server anlegte, bekam ohne Schluessel keinen
+mehr (Chrome-Erweiterung). Seit 1.9.1 hat die Route ohne Schluessel den eigenen Bereich "nokey". Nach aussen
+melden beide weiter scope "ip", weil beide je IP-Adresse zaehlen."""
 
 import os
 import sqlite3
@@ -21,6 +26,9 @@ from .config import settings
 _lock = threading.Lock()
 KEY_PREFIX = "key:"
 GH_PREFIX = "gh:"
+NOKEY_PREFIX = "nokey:"
+# Reihenfolge wie in _total(): Praefix der Identitaet und der Bereich, in dem sie zaehlt.
+_PREFIX_SCOPES = ((KEY_PREFIX, "key"), (GH_PREFIX, "gh"), (NOKEY_PREFIX, "nokey"))
 
 
 class QuotaExceeded(Exception):
@@ -32,11 +40,16 @@ def _today() -> str:
 
 
 def _scope(ident: str) -> str:
-    if ident.startswith(KEY_PREFIX):
-        return "key"
-    if ident.startswith(GH_PREFIX):
-        return "gh"
+    """Bereich, in dem die Identitaet zaehlt und fuer den die Tagessumme gebildet wird."""
+    for prefix, scope in _PREFIX_SCOPES:
+        if ident.startswith(prefix):
+            return scope
     return "ip"
+
+
+def _public_scope(scope: str) -> str:
+    """Bereich in der Antwort der API: Die Route ohne Schluessel zaehlt je IP-Adresse und meldet deshalb "ip"."""
+    return "ip" if scope == "nokey" else scope
 
 
 def _connect() -> sqlite3.Connection:
@@ -49,11 +62,14 @@ def _connect() -> sqlite3.Connection:
 
 
 def _total(conn: sqlite3.Connection, day: str, scope: str) -> int:
-    """Summe des Tages im selben Bereich (IP-Adressen oder Schluessel)."""
+    """Summe des Tages im selben Bereich (IP-Adressen mit poe-Schluessel, ohne Schluessel, Schluessel, Repositories)."""
+    cases = " ".join("when substr(ip, 1, ?) = ? then ?" for _ in _PREFIX_SCOPES)
+    params: list = [day]
+    for prefix, prefix_scope in _PREFIX_SCOPES:
+        params += [len(prefix), prefix, prefix_scope]
     row = conn.execute(
-        "select coalesce(sum(n), 0) from poe_usage where day = ? and "
-        "(case when substr(ip, 1, ?) = ? then 'key' when substr(ip, 1, ?) = ? then 'gh' else 'ip' end) = ?",
-        (day, len(KEY_PREFIX), KEY_PREFIX, len(GH_PREFIX), GH_PREFIX, scope),
+        f"select coalesce(sum(n), 0) from poe_usage where day = ? and (case {cases} else 'ip' end) = ?",
+        (*params, scope),
     ).fetchone()
     return int(row[0])
 
@@ -82,7 +98,7 @@ def usage(ident: str, *, per_ip_day: int | None = None, per_day: int | None = No
     used = int(row[0]) if row else 0
     return {
         "day_utc": day,
-        "scope": scope,
+        "scope": _public_scope(scope),
         "per_ip_day": per_ip_day,
         "per_day": per_day,
         "used_ip": used,
@@ -117,6 +133,8 @@ def register(ident: str, *, per_ip_day: int | None = None, per_day: int | None =
                     raise QuotaExceeded(f"Shared daily seal quota of the GitHub integration is used up ({per_day} seals per day). Try again tomorrow")
                 if scope == "key":
                     raise QuotaExceeded(f"Gemeinsames Tageskontingent aller Schluessel erschoepft ({per_day} Nachweise je Tag). Morgen wieder")
+                if scope == "nokey":
+                    raise QuotaExceeded(f"Tageskontingent des Zugangs ohne Schluessel erschoepft ({per_day} Nachweise je Tag). Morgen wieder oder mit eigenem Schluessel")
                 raise QuotaExceeded(f"Tageskontingent der oeffentlichen App erschoepft ({per_day} Nachweise je Tag). Morgen wieder oder mit eigenem write-Schluessel")
             conn.execute("insert into poe_usage (day, ip, n) values (?, ?, 1) on conflict(day, ip) do update set n = n + 1", (day, ident))
             conn.execute("delete from poe_usage where day < ?", (day,))

@@ -310,7 +310,8 @@ dieser API und dieses MCP-Servers unter der Adresse, unter der Nutzer Verifile k
 Die Liste der Aufrufe steht an zwei Stellen, die zusammenpassen müssen: `VERIFILE_API_OPERATIONS` in
 `doichain_api/main.py` und das Pfadmuster in `deploy/nginx-verifile.conf`. `tests/test_poe.py` prüft das.
 Kontingente und Schlüssel sind dieselben wie unter der Hauptadresse (ohne Schlüssel 3 je Tag und IP, mit dem
-öffentlichen poe-Schlüssel über den MCP-Server 10 je Tag und IP).
+öffentlichen poe-Schlüssel über den MCP-Server 10 je Tag und IP). Seit 1.9.1 zählen beide Wege getrennt,
+vorher teilten sie sich einen Zähler je IP-Adresse.
 
 ```bash
 claude mcp add --scope user --transport http verifile https://verifile.it/mcp

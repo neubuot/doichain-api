@@ -1190,9 +1190,13 @@ def client_ip(request: Request) -> str:
     return str(addr)
 
 
-def quota_ident(key_id: str | None, ip: str) -> str:
+def quota_ident(key_id: str | None, ip: str, *, nokey: bool = False) -> str:
     """Zaehler-Identitaet fuer das Kontingent: Schluessel mit eigenem Kontingent (DOI_POE_KEY_LIMITS) zaehlen
-    je Schluessel, alle anderen poe-Schluessel je IP-Adresse."""
+    je Schluessel, alle anderen poe-Schluessel je IP-Adresse. Die Route ohne Schluessel (nokey) zaehlt ebenfalls
+    je IP-Adresse, aber in einem eigenen Bereich, damit sie sich mit dem oeffentlichen poe-Schluessel von
+    Verifile und MCP-Server keinen Zaehler teilt."""
+    if nokey:
+        return quota.NOKEY_PREFIX + ip
     if key_id and key_id in settings.poe_key_limits:
         return quota.KEY_PREFIX + key_id
     return ip
@@ -1253,10 +1257,10 @@ class PoePublicCreate(BaseModel):
 
 @app.get("/v1/poe/public/quota", tags=["Proof of Existence"], summary="Verbleibendes Tageskontingent des oeffentlichen Endpunkts (ohne Schluessel)")
 async def poe_public_quota(request: Request):
-    return {"unlimited": False, **quota.usage(client_ip(request), per_ip_day=settings.poe_nokey_per_ip_day, per_day=settings.poe_nokey_per_day)}
+    return {"unlimited": False, **quota.usage(quota_ident(None, client_ip(request), nokey=True), **quota_limits_for(None, nokey=True))}
 
 
-@app.post("/v1/poe/public", tags=["Proof of Existence"], summary="Nachweis anlegen ohne API-Key (IP-basiertes Tageskontingent)", description="Oeffentlicher Endpunkt ohne Authentifizierung. Kontingent je IP-Adresse und Tag, Standardmaessig 3 je IP und 50 insgesamt. Neuregistrierung (reanchor) ist hier nicht moeglich.", status_code=201)
+@app.post("/v1/poe/public", tags=["Proof of Existence"], summary="Nachweis anlegen ohne API-Key (IP-basiertes Tageskontingent)", description="Oeffentlicher Endpunkt ohne Authentifizierung. Kontingent je IP-Adresse und Tag, Standardmaessig 3 je IP und 50 insgesamt. Der Zaehler ist eigenstaendig, Nachweise mit poe-Schluessel (Verifile, MCP-Server) belasten ihn nicht und umgekehrt. Neuregistrierung (reanchor) ist hier nicht moeglich.", status_code=201)
 async def poe_public_create(body: PoePublicCreate, request: Request):
     return await _poe_create(check_hash(body.hash), body.filename, body.note, public=True, ip=client_ip(request), reanchor=False, nokey=True)
 
@@ -1325,7 +1329,7 @@ async def _poe_create(
     # Kontingentgrenzen: nokey (oeffentlich ohne Schluessel) nutzt engere Grenzen als poe-Schluessel,
     # Schluessel mit eigenem Kontingent zaehlen je Schluessel statt je IP-Adresse, Siegel je Repository.
     quota_limits = limits_override if limits_override is not None else quota_limits_for(key_id, nokey=nokey)
-    ident = ident_override or (ip if nokey else quota_ident(key_id, ip))
+    ident = ident_override or quota_ident(key_id, ip, nokey=nokey)
     remaining = None
     if public:
         await public_poe_guard()

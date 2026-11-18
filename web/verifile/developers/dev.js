@@ -48,7 +48,7 @@
     "mcp.note": "An agent with file access (Claude Code, Cursor, VS Code) computes the hash itself. In a plain chat without file access, drop the file on <a href=\"../\">verifile.it</a> and give the agent the hash.",
     "rules.title": "Limits and rules",
     "rules.q1": "How many proofs are free?",
-    "rules.a1": "Through the API without a key 3 per day and IP address, through the MCP server 10 per day and IP address. On top there is a daily limit for all users together. The day rolls over at 00:00 UTC. Users of hosted chat apps share the allowance of their provider's servers. Verifying is not limited, only throttled to 10 requests per second.",
+    "rules.a1": "Through the API without a key 3 per day and IP address, through the MCP server 10 per day and IP address. The two are counted separately. On top, each has a daily limit for all users together. The day rolls over at 00:00 UTC. Users of hosted chat apps share the allowance of their provider's servers. Verifying is not limited, only throttled to 10 requests per second.",
     "rules.q2": "I need more. What then?",
     "rules.a2": "On request DOI Labs issues a key of your own with its own daily allowance. It is sent in the <code>X-API-Key</code> header, with the API to <code>POST /v1/poe</code>, with the MCP server as a header of the connector. The contact address is in the legal notice.",
     "rules.q3": "What becomes public?",

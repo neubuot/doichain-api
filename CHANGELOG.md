@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen der Doichain API. Datumsangaben im Format JJJJ-MM-TT.
 
+## 1.9.1 (2026-11-18)
+
+Eigener Kontingentzähler für die Route ohne Schlüssel. Anlass: Beim Testnachweis über verifile.it fiel auf, dass `POST /v1/poe/public` (3 je Tag und IP-Adresse) und der öffentliche poe-Schlüssel von Verifile und MCP-Server (10 je Tag und IP-Adresse) seit Einführung der Route auf dieselbe Zeile der Kontingent-Datenbank zählten. Wer drei Nachweise über Verifile oder einen MCP-Server anlegte, bekam ohne Schlüssel keinen mehr (das traf die Chrome-Erweiterung Screenshot PoE), und jeder Nachweis ohne Schlüssel kostete auch einen der zehn.
+
+- Die Route ohne Schlüssel zählt jetzt unter `nokey:<ip>` im eigenen Bereich `nokey` mit eigener Tagessumme (`DOI_POE_NOKEY_PER_DAY`, Standard 50). Der öffentliche poe-Schlüssel zählt weiter unter der IP-Adresse mit seiner Tagessumme (`DOI_POE_PUBLIC_PER_DAY`, Standard 200). Beide belasten sich nicht mehr gegenseitig.
+- Folge für das Wallet: Je IP-Adresse sind bis zu 13 kostenlose Nachweise am Tag möglich (vorher 10), für alle zusammen höchstens 250 (vorher 200).
+- Die Antworten bleiben gleich. `GET /v1/poe/public/quota` und `quota` in der Antwort von `POST /v1/poe/public` melden weiter `scope: ip`, weil beide Zähler je IP-Adresse gelten. Verifile, die Chrome-Erweiterung und der MCP-Server brauchen keine Änderung.
+- Keine Migration nötig. Vorhandene Zeilen des laufenden Tages bleiben beim poe-Schlüssel, der Zähler ohne Schlüssel beginnt am Tag der Umstellung bei null.
+- Eigene Meldung, wenn die Tagessumme ohne Schlüssel erschöpft ist.
+- Entwicklerseite von Verifile: Hinweis, dass beide Wege getrennt zählen.
+- Tests: drei neue in `tests/test_poe.py` (getrennte Zähler, Rückgabe des Kontingents nach einem Fehlschlag, Bereiche der Identitäten).
+
 ## 1.9.0 (2026-11-18)
 
 Entwickler-Eingang für Verifile. Anlass: Wer Verifile kennt, sucht API und MCP-Server unter verifile.it und fand dort nichts, obwohl beides unter doi-api.sendlabs.de bereitsteht.

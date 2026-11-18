@@ -81,7 +81,7 @@ class Settings:
     # Namecoin-Grenzen, die Doichain Core 31 erbt.
     max_name_length: int = 255
     max_value_length: int = 520
-    api_version: str = "1.9.0"
+    api_version: str = "1.9.1"
 
 
 settings = Settings()
